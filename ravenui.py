@@ -93,6 +93,11 @@ class Button(Element):
 
         self.call_back_ = action
 
+    def update_text(self, txt):
+        self.txt = txt
+        self.txt_surf = self.font.render(self.txt, 1, self.fg)
+        self.txt_rect = self.txt_surf.get_rect(center=[s//2 for s in self.size])
+
     def draw(self):
         self.mouseover()
         self.surface.fill(self.bg)
