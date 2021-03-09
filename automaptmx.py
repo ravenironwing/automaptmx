@@ -18,13 +18,17 @@ pg.display.set_caption("Map Generator")
 clock = pg.time.Clock()
 
 MAP_SIZE = 1000
-TILE_COUNT = 324
+TILE_COUNT = 798
 TILESET_COLUMNS = 27
 SHALLOW_TILE = 217
-WATER_TILE = 244
-SWAMP_SHALLOWS = 271
-SWAMP_WATER = 298
+WATER_TILE = 218
+SWAMP_SHALLOWS = 219
+SWAMP_WATER = 220
+LAKE_SHALLOWS = 221
+LAKE_WATER = 222
+WAVE_TILES = [231, 232, 233,258, 260, 285, 286, 287]
 MAX_SWAMP_SIZE = 100 * 100 # Max area swamps can take up.
+MIN_OCEAN_SIZE = 1000 * 40 # Minimum area needed to add ocean water
 KINDSOFTILES = 18 #Ignoring the water tiles and swamp tiles
 ROUND_TILES = range(89, 133)
 ROUNDPOINT_TILES = range(155, 177)
@@ -52,6 +56,7 @@ scale_map_surface = pg.Surface((500, 500)).convert()
 world_noise = np.zeros((MAP_SIZE, MAP_SIZE))
 world = np.zeros((MAP_SIZE, MAP_SIZE))
 swamps_arr = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used for storing regions that can be turned into swamps.
+ocean_regions = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used to tell oceans/seas from lakes to add waves to.
 img = cv2.imread("mapmask1.png", 0)
 mask = img / 255.0
 
@@ -248,7 +253,7 @@ def new_map():
     update_map()
 
 def update_map():
-    global world_noise, scale_map_surface, world, mask, swamps_arr, MAX_SWAMP_SIZE
+    global world_noise, scale_map_surface, world, mask, swamps_arr, MAX_SWAMP_SIZE, ocean_regions
     swamps_arr = np.zeros((MAP_SIZE, MAP_SIZE), int)
     print('Updating map...')
     # Combines mask image data with perlin noise
@@ -280,6 +285,9 @@ def update_map():
     grass_img = grass_arr.astype('uint8')
     kernel = np.ones((3, 3), np.uint8)
     grass_img = cv2.dilate(grass_img, kernel, iterations=1) # This adds a padding of 1 around the swamp areas so the edges are correct.
+    ocean_arr = np.where(temp_array < 6, 255, 0) # Used for finding where the oceans are.
+    ocean_img = ocean_arr.astype('uint8')
+    ocean_img = cv2.dilate(ocean_img, kernel, iterations=1)
     shade = 0
     for x in range(MAP_SIZE):
         for y in range(MAP_SIZE):
@@ -289,13 +297,16 @@ def update_map():
                     shade = 255
                     break
                 cv2.floodFill(grass_img, None, (y, x), shade)
-    print("Potential swamp areas: ", shade)
+                cv2.floodFill(ocean_img, None, (y, x), shade)
     swamps_list = []
     for color in range(0, shade):
         swamp_arr = np.where(grass_img == color, 1, 0)
+        ocean_arr = np.where(ocean_img == color, 1, 0)
         if np.count_nonzero(swamp_arr == 1) < MAX_SWAMP_SIZE:
             swamps_list.append(swamp_arr)
-    print("Correct size swamp areas:" + str(len(swamps_list)))
+        if np.count_nonzero(ocean_arr == 1) > MIN_OCEAN_SIZE:
+            ocean_regions = np.add(ocean_regions, ocean_arr) # Finds the ocean tiles to add waves to
+    print("Potential swamp areas:" + str(len(swamps_list)))
     if len(swamps_list) < swamps_slider.val:
         num_swamps = len(swamps_list)
     else:
@@ -350,10 +361,16 @@ def make_tmx():
                 water = SWAMP_SHALLOWS
             elif KINDSOFTILES < newx < 26:
                 water = SWAMP_WATER
-            elif newx == 5:
-                water = SHALLOW_TILE
-            elif newx < 5:
-                water = WATER_TILE
+            elif (newx == 5):
+                if (ocean_regions[i][j] == 1):
+                    water = SHALLOW_TILE
+                else:
+                    water = LAKE_SHALLOWS
+            elif (newx < 5):
+                if (ocean_regions[i][j] == 1):
+                    water = WATER_TILE
+                else:
+                    water = LAKE_WATER
             new_water_row.append(water)
             new_base_row.append(newx)
         base_layer_vals.append(new_base_row)
@@ -384,7 +401,7 @@ def make_tmx():
             ns_diag_list = [arr1[x - 1][y - 1], arr1[x + 1][y + 1]]
             ps_diag_list = [arr1[x + 1][y - 1], arr1[x - 1][y + 1]]
 
-            for tile in range(TILESET_COLUMNS, 1, -1):
+            for tile in range(TILESET_COLUMNS, 0, -1):
                 num_tiles = find_list.count(tile) # Counts how many times each tile appears in a 2x2 block. If it's 1 then it's a corner.
                 num_tiles2 = find_list2.count(tile) # Counts how many times teach tile type appears in a  3x3 block.
                 num_under_tiles = find_list.count(tile - 1)  # Counts the number of the same tile that should be directly below the target tile there are.
@@ -398,16 +415,35 @@ def make_tmx():
                 num_ns_diag_tiles = ns_diag_list.count(tile)
                 num_ps_diag_tiles = ps_diag_list.count(tile)
 
+                # rounds out positive corners
                 if (num_tiles == 1) and (num_under_tiles == 3):
-                    # rounds out positive corners
                     if arr1[x][y] == tile:
                         corners_layer_vals[x - 1][y - 1] = ul_corner(tile)
+                        if (tile < 7) and (ocean_regions[x - 1][y - 1] == 1):
+                            overlay2_layer_vals[x - 1][y - 1] = WAVE_TILES[0] # correct
                     elif arr1[x+1][y] == tile:
                         corners_layer_vals[x][y - 1] = ur_corner(tile)
+                        if (tile < 7) and (ocean_regions[x][y - 1] == 1):
+                            overlay2_layer_vals[x][y - 1] = WAVE_TILES[5]
                     elif arr1[x][y+1] == tile:
                         corners_layer_vals[x - 1][y] = ll_corner(tile)
+                        if (tile < 7) and (ocean_regions[x - 1][y] == 1):
+                            overlay2_layer_vals[x - 1][y] = WAVE_TILES[2] # correct
                     elif arr1[x+1][y+1] == tile:
                         corners_layer_vals[x][y] = lr_corner(tile)
+                        if (tile < 7) and (ocean_regions[x][y] == 1):
+                            overlay2_layer_vals[x][y] = WAVE_TILES[7] # correct
+
+                # Adds perpendicular waves.
+                if (tile < 6) and (ocean_regions[x - 1][y - 1] == 1) and (arr1[x][y] == tile) and (overlay2_layer_vals[x - 1][y - 1] == 0):
+                    if (arr1[x + 1][y] == tile + 1) and (overlay2_layer_vals[x][y - 1] == 0):
+                        overlay2_layer_vals[x - 1][y - 1] = WAVE_TILES[6]
+                    if (arr1[x - 1][y] == tile + 1) and (overlay2_layer_vals[x - 2][y - 1] == 0):
+                        overlay2_layer_vals[x - 1][y - 1] = WAVE_TILES[1]
+                    if (arr1[x][y + 1] == tile + 1) and (overlay2_layer_vals[x - 1][y] == 0):
+                        overlay2_layer_vals[x - 1][y - 1] = WAVE_TILES[4]
+                    if (arr1[x][y - 1] == tile + 1) and (overlay2_layer_vals[x - 1][y - 2] == 0):
+                        overlay2_layer_vals[x - 1][y - 1] = WAVE_TILES[3]
 
                 if (num_hv_tiles == 4) and (tile - 1 == arr1[x][y]): # Fixes ugly single holes
                     if tile in [6, 27]:
@@ -591,7 +627,7 @@ def make_tmx():
           </tile>
      </tileset>
      <layer id="1" name="Base Layer" width="{mapw}" height="{mapw}">
-      <data encoding="csv">""".format(mapw = str(MAP_SIZE), watertile = str(WATER_TILE), tile_count = str(TILE_COUNT), tileset_columns = str(TILESET_COLUMNS))
+      <data encoding="csv">""".format(mapw = str(MAP_SIZE), watertile = str(LAKE_WATER), tile_count = str(TILE_COUNT), tileset_columns = str(TILESET_COLUMNS))
     outfile.write(header)
     outfile.write("\n")
     for i, row in enumerate(base_layer_vals):
