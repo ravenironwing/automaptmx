@@ -384,16 +384,13 @@ def make_tmx():
     corners_layer_vals = np.zeros((MAP_SIZE, MAP_SIZE), int)
     overlay_layer_vals = np.zeros((MAP_SIZE, MAP_SIZE), int) #used for corners that overlay water edges.
     overlay2_layer_vals = np.zeros((MAP_SIZE, MAP_SIZE), int) #used for corners that overlay water edges.
-    waves_layer_vals = np.zeros((MAP_SIZE, MAP_SIZE), int)
+    wave_val_arr = np.zeros((MAP_SIZE + 2, MAP_SIZE + 2), int)
     # Creates a temporary array with a padding of 1 to search for replace pattern
-    base_arr = np.array(base_layer_vals, int)
-    y_size, x_size = base_arr.shape
-    arr1 = np.zeros((y_size + 2, x_size + 2), int)
-    arr1[1:-1, 1:-1] = base_arr
+    arr1 = np.pad(base_layer_vals, pad_width=1, mode='constant', constant_values=0)
     # I know I screwed up and my x's and y's are switched in this loop.... But it works.
-    for x in range(1, x_size + 1):      # In this code I'm finding tile patterns by counting tiles of neighboring types in 3x3 and 2x2 groups instead of checking each tile in the group.
+    for x in range(1, MAP_SIZE + 1):      # In this code I'm finding tile patterns by counting tiles of neighboring types in 3x3 and 2x2 groups instead of checking each tile in the group.
         print("Column " + str(x) + " out of " + str(MAP_SIZE) + ".")
-        for y in range(1, y_size + 1):
+        for y in range(1, MAP_SIZE + 1):
             # Scans map 4 blocks at a time to find the corner pattern.
             find_list = [arr1[x][y], arr1[x+1][y], arr1[x][y+1], arr1[x+1][y+1]] # Makes a list of 4 tile block values. Checks for basic corners.
             find_list2 = find_list.copy()
@@ -424,30 +421,30 @@ def make_tmx():
                     if arr1[x][y] == tile:
                         corners_layer_vals[x - 1][y - 1] = ul_corner(tile)
                         if (tile < 7) and (ocean_regions[x - 1][y - 1] == 1):
-                            waves_layer_vals[x - 1][y - 1] = WAVE_TILES[0]
+                            wave_val_arr[x][y] = WAVE_TILES[0]
                     elif arr1[x+1][y] == tile:
                         corners_layer_vals[x][y - 1] = ur_corner(tile)
                         if (tile < 7) and (ocean_regions[x][y - 1] == 1):
-                            waves_layer_vals[x][y - 1] = WAVE_TILES[5]
+                            wave_val_arr[x + 1][y] = WAVE_TILES[5]
                     elif arr1[x][y+1] == tile:
                         corners_layer_vals[x - 1][y] = ll_corner(tile)
                         if (tile < 7) and (ocean_regions[x - 1][y] == 1):
-                            waves_layer_vals[x - 1][y] = WAVE_TILES[2]
+                            wave_val_arr[x][y + 1] = WAVE_TILES[2]
                     elif arr1[x+1][y+1] == tile:
                         corners_layer_vals[x][y] = lr_corner(tile)
                         if (tile < 7) and (ocean_regions[x][y] == 1):
-                            waves_layer_vals[x][y] = WAVE_TILES[7]
+                            wave_val_arr[x + 1][y + 1] = WAVE_TILES[7]
 
                 # Adds perpendicular waves.
-                if (tile < 6) and (ocean_regions[x - 1][y - 1] == 1) and (arr1[x][y] == tile) and (waves_layer_vals[x - 1][y - 1] == 0):
-                    if (arr1[x + 1][y] == tile + 1) and (waves_layer_vals[x][y - 1] == 0):
-                        waves_layer_vals[x - 1][y - 1] = WAVE_TILES[6]
-                    if (arr1[x - 1][y] == tile + 1) and (waves_layer_vals[x - 2][y - 1] == 0):
-                        waves_layer_vals[x - 1][y - 1] = WAVE_TILES[1]
-                    if (arr1[x][y + 1] == tile + 1) and (waves_layer_vals[x - 1][y] == 0):
-                        waves_layer_vals[x - 1][y - 1] = WAVE_TILES[4]
-                    if (arr1[x][y - 1] == tile + 1) and (waves_layer_vals[x - 1][y - 2] == 0):
-                        waves_layer_vals[x - 1][y - 1] = WAVE_TILES[3]
+                if (tile < 6) and (ocean_regions[x - 1][y - 1] == 1) and (arr1[x][y] == tile) and (wave_val_arr[x][y] == 0):
+                    if (arr1[x + 1][y] == tile + 1) and (wave_val_arr[x + 1][y] == 0):
+                        wave_val_arr[x][y] = WAVE_TILES[6]
+                    if (arr1[x - 1][y] == tile + 1) and (wave_val_arr[x - 1][y] == 0):
+                        wave_val_arr[x][y] = WAVE_TILES[1]
+                    if (arr1[x][y + 1] == tile + 1) and (wave_val_arr[x][y + 1] == 0):
+                        wave_val_arr[x][y] = WAVE_TILES[4]
+                    if (arr1[x][y - 1] == tile + 1) and (wave_val_arr[x][y - 1] == 0):
+                        wave_val_arr[x][y] = WAVE_TILES[3]
 
                 if (num_hv_tiles == 4) and (tile - 1 == arr1[x][y]): # Fixes ugly single holes
                     if tile in [6, 27]:
@@ -458,8 +455,8 @@ def make_tmx():
                         break
                 elif (num_hv_under_tiles == 4) and (tile == arr1[x][y]): # Fixes ugly single tile
                     corners_layer_vals[x -1][y - 1] = tile + (5 * TILESET_COLUMNS)
-                    if (waves_layer_vals[x - 1][y - 1] != 0): #Gets rid of waves that shouldn't be here.
-                        waves_layer_vals[x - 1][y - 1] = 0
+                    if (wave_val_arr[x][y] != 0): #Gets rid of waves that shouldn't be here.
+                        wave_val_arr[x][y] = 0
                     if num_diag_tiles == 1:
                         if diag_list[0] == tile: #-- arr1[x - 1][y - 1]
                             overlay_layer_vals[x - 1][y - 1] = roundedpoint0(tile)
@@ -543,19 +540,25 @@ def make_tmx():
                             break
 
                 elif (num_hv_under_tiles == 3) and (num_lg_tiles == 2) and (num_ps_diag_tiles < 2) and (num_ns_diag_tiles < 2):  # Finds and places the rounded peninsula shaped tiles.
-                    if (waves_layer_vals[x - 1][y - 1] != 0): #Gets rid of waves that shouldn't be here.
-                        waves_layer_vals[x - 1][y - 1] = 0
                     if (arr1[x-1][y] == tile) and (arr1[x+1][y - 1] != tile) and (arr1[x+1][y + 1] != tile):
                         corners_layer_vals[x - 1][y - 1] = pl_corner(tile)
+                        if ocean_regions[x-1][y-1]:
+                            wave_val_arr[x][y] = WAVE_TILES[1]
                         break
                     elif arr1[x+1][y] == tile and (arr1[x-1][y - 1] != tile) and (arr1[x-1][y + 1] != tile):
                         corners_layer_vals[x - 1][y - 1] = pr_corner(tile)
+                        if ocean_regions[x - 1][y - 1]:
+                            wave_val_arr[x][y] = WAVE_TILES[6]
                         break
                     elif arr1[x][y+1] == tile and (arr1[x-1][y - 1] != tile) and (arr1[x+1][y - 1] != tile):
                         corners_layer_vals[x - 1][y - 1] = pd_corner(tile)
+                        if ocean_regions[x - 1][y - 1]:
+                            wave_val_arr[x][y] = WAVE_TILES[4]
                         break
                     elif arr1[x][y-1] == tile and (arr1[x-1][y + 1] != tile) and (arr1[x+1][y + 1] != tile): #left
                         corners_layer_vals[x - 1][y - 1] = pu_corner(tile)
+                        if ocean_regions[x - 1][y - 1]:
+                            wave_val_arr[x][y] = WAVE_TILES[3]
                         break
 
                 elif (num_hv_tiles == 2) and (arr1[x][y] == tile - 1): # Rounds out negative corners
@@ -586,99 +589,105 @@ def make_tmx():
 
     # This secondary loop finishes wave layer by removing anomalous waves and filling in gaps.
     # Creates a temporary array with a padding of 1 to search for replace pattern
-    waves_arr = np.array(waves_layer_vals, int)
-    y_size, x_size = waves_arr.shape
-    wave_val_arr = np.zeros((y_size + 2, x_size + 2), int)
-    wave_val_arr[1:-1, 1:-1] = waves_arr
-    waves_arr = np.where(wave_val_arr > 0, 1, 0) # Creates an array of 1s where there are waves and zeros where there are none.
-    for y in range(1, y_size + 1):      # In this code I'm finding tile patterns by counting tiles of neighboring types in 3x3 and 2x2 groups instead of checking each tile in the group.
+    wave2_val_arr = np.zeros((MAP_SIZE + 2, MAP_SIZE + 2), int)
+    for y in range(1, MAP_SIZE + 1):      # In this code I'm finding tile patterns by counting tiles of neighboring types in 3x3 and 2x2 groups instead of checking each tile in the group.
         print("Column " + str(y) + " out of " + str(MAP_SIZE) + ".")
-        for x in range(1, x_size + 1):
+        for x in range(1, MAP_SIZE + 1):
             # Scans map 4 blocks at a time to find the corner pattern.
-            find_list = [waves_arr[y][x], waves_arr[y+1][x], waves_arr[y][x+1], waves_arr[y+1][x+1]] # Makes a list of 4 tile block values. Checks for basic corners.
+            find_list = [wave_val_arr[y][x], wave_val_arr[y+1][x], wave_val_arr[y][x+1], wave_val_arr[y+1][x+1]] # Makes a list of 4 tile block values. Checks for basic corners.
             find_list2 = find_list.copy()
-            find_list2.extend([waves_arr[y - 1][x], waves_arr[y - 1][x -1], waves_arr[y][x - 1], waves_arr[y + 1][x - 1], waves_arr[y - 1][x + 1]])  # Makes a list of 9 tile block values. Advanced checks
-            hv_list = [waves_arr[y - 1][x], waves_arr[y + 1][x], waves_arr[y][x + 1], waves_arr[y][x - 1]]
-            diag_list = [waves_arr[y - 1][x - 1], waves_arr[y + 1][x - 1], waves_arr[y - 1][x + 1], waves_arr[y + 1][x + 1]]
-            num_waves2 = find_list2.count(1)
-            num_diag = diag_list.count(1)
-            num_hv = hv_list.count(1)
+            find_list2.extend([wave_val_arr[y - 1][x], wave_val_arr[y - 1][x -1], wave_val_arr[y][x - 1], wave_val_arr[y + 1][x - 1], wave_val_arr[y - 1][x + 1]])  # Makes a list of 9 tile block values. Advanced checks
+            hv_list = [wave_val_arr[y - 1][x], wave_val_arr[y + 1][x], wave_val_arr[y][x + 1], wave_val_arr[y][x - 1]]
+            diag_list = [wave_val_arr[y - 1][x - 1], wave_val_arr[y + 1][x - 1], wave_val_arr[y - 1][x + 1], wave_val_arr[y + 1][x + 1]]
+            num_waves2 = 9 - find_list2.count(0)
+            num_diag = 4 - diag_list.count(0)
+            num_hv = 4 - hv_list.count(0)
 
             # Fills in gaps between parallel waves
-            if waves_arr[y][x] == 0: # Only modifies empty cells.
+            if wave_val_arr[y][x] == 0: # Only modifies empty cells.
                 if num_waves2 == 2:
-                    if waves_arr[y - 1][x] + waves_arr[y + 1][x] > 1:
+                    if wave_val_arr[y - 1][x] and wave_val_arr[y + 1][x]:
                         if arr1[y][x] == arr1[y][x + 1] - 1:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_TILES[4]
-                        else:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_TILES[3]
-                    elif waves_arr[y][x - 1] + waves_arr[y][x + 1] > 1:
+                            wave2_val_arr[y][x] = WAVE_TILES[4]
+                        elif arr1[y][x] == arr1[y][x - 1] - 1:
+                            wave2_val_arr[y][x] = WAVE_TILES[3]
+                        else: # Write the code for the waves that cross like base layer.
+                            pass
+                    elif wave_val_arr[y][x - 1] and wave_val_arr[y][x + 1]:
                         if arr1[y][x] == arr1[y + 1][x] - 1:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_TILES[6]
+                            wave2_val_arr[y][x] = WAVE_TILES[6]
+                        elif arr1[y][x] == arr1[y - 1][x] - 1:
+                            wave2_val_arr[y][x] = WAVE_TILES[1]
                         else:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_TILES[1]
+                            pass
 
                     #Fills in missing diagonal between two diagonals.
-                    elif waves_arr[y + 1][x - 1] + waves_arr[y - 1][x + 1] > 1:
+                    elif wave_val_arr[y + 1][x - 1] and wave_val_arr[y - 1][x + 1]:
                         if wave_val_arr[y + 1][x - 1] == WAVE_TILES[7]:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_TILES[7]
+                            wave2_val_arr[y][x] = WAVE_TILES[7]
                         elif wave_val_arr[y + 1][x - 1] == WAVE_TILES[0]:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_TILES[7]
-                    elif waves_arr[y - 1][x - 1] + waves_arr[y + 1][x + 1] > 1:
+                            wave2_val_arr[y][x] = WAVE_TILES[7]
+                    elif wave_val_arr[y - 1][x - 1] and wave_val_arr[y + 1][x + 1]:
                         if wave_val_arr[y - 1][x - 1] == WAVE_TILES[2]:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_TILES[2]
+                            wave2_val_arr[y][x] = WAVE_TILES[2]
                         elif wave_val_arr[y - 1][x - 1] == WAVE_TILES[5]:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_TILES[5]
+                            wave2_val_arr[y][x] = WAVE_TILES[5]
 
                     elif (num_diag == 1) and (num_hv == 1):
                         if arr1[y][x] == arr1[y + 1][x] - 1:
-                            if waves_layer_vals[y][x - 1] == 0:
-                                waves_layer_vals[y - 1][x - 1] = WAVE_TILES[6]
+                            if wave_val_arr[y + 1][x] == 0:
+                                wave2_val_arr[y][x] = WAVE_TILES[6]
                         if arr1[y][x] == arr1[y - 1][x] - 1:
-                            if waves_layer_vals[y - 2][x - 1] == 0:
-                                waves_layer_vals[y - 1][x - 1] = WAVE_TILES[1]
+                            if wave_val_arr[y - 1][x] == 0:
+                                wave2_val_arr[y][x] = WAVE_TILES[1]
                         if arr1[y][x] == arr1[y][x + 1] - 1:
-                            if waves_layer_vals[y - 1][x] == 0:
-                                if waves_layer_vals[y - 1 + 1][x - 1 - 1] == WAVE_TILES[7]:
-                                    waves_layer_vals[y - 1][x - 1] = WAVE_TILES[7]
-                                elif waves_layer_vals[y - 1 - 1][x - 1 - 1] == WAVE_TILES[2]:
-                                    waves_layer_vals[y - 1][x - 1] = WAVE_TILES[2]
-                                elif waves_layer_vals[y - 1][x - 1 - 1] == WAVE_TILES[6]:
-                                    waves_layer_vals[y - 1][x - 1] = WAVE_TILES[7]
-                                elif waves_layer_vals[y - 1][x - 1 + 1] == WAVE_TILES[1]:
-                                    waves_layer_vals[y - 1][x - 1] = WAVE_TILES[2]
+                            if wave_val_arr[y][x + 1] == 0:
+                                if wave_val_arr[y + 1][x - 1] == WAVE_TILES[7]:
+                                    wave2_val_arr[y][x] = WAVE_TILES[7]
+                                elif wave_val_arr[y - 1][x - 1] == WAVE_TILES[2]:
+                                    wave2_val_arr[y][x] = WAVE_TILES[2]
+                                elif wave_val_arr[y][x - 1] == WAVE_TILES[6]:
+                                    wave2_val_arr[y][x] = WAVE_TILES[7]
+                                elif wave_val_arr[y][x - 1] == WAVE_TILES[1]:
+                                    wave2_val_arr[y][x] = WAVE_TILES[2]
                                 else:
-                                    waves_layer_vals[y - 1][x - 1] = WAVE_TILES[4]
+                                    wave2_val_arr[y][x] = WAVE_TILES[4]
                         if arr1[y][x] == arr1[y][x - 1] - 1:
-                            if waves_layer_vals[y - 1][x - 2] == 0:
-                                if waves_layer_vals[y - 1 + 1][x - 1 + 1] == WAVE_TILES[5]:
-                                    waves_layer_vals[y - 1][x - 1] = WAVE_TILES[5]
-                                elif waves_layer_vals[y - 1 - 1][x - 1 + 1] == WAVE_TILES[0]:
-                                    waves_layer_vals[y - 1][x - 1] = WAVE_TILES[0]
-                                elif waves_layer_vals[y - 1][x - 1 + 1] == WAVE_TILES[6]:
-                                    waves_layer_vals[y - 1][x - 1] = WAVE_TILES[5]
-                                elif waves_layer_vals[y - 1][x - 1 + 1] == WAVE_TILES[1]:
-                                    waves_layer_vals[y - 1][x - 1] = WAVE_TILES[0]
+                            if wave_val_arr[y][x - 1] == 0:
+                                if wave_val_arr[y + 1][x + 1] == WAVE_TILES[5]:
+                                    wave2_val_arr[y][x] = WAVE_TILES[5]
+                                elif wave_val_arr[y - 1][x + 1] == WAVE_TILES[0]:
+                                    wave2_val_arr[y][x] = WAVE_TILES[0]
+                                elif wave_val_arr[y][x + 1] == WAVE_TILES[6]:
+                                    wave2_val_arr[y][x] = WAVE_TILES[5]
+                                elif wave_val_arr[y][x + 1] == WAVE_TILES[1]:
+                                    wave2_val_arr[y][x] = WAVE_TILES[0]
                                 else:
-                                    waves_layer_vals[y - 1][x - 1] = WAVE_TILES[3]
+                                    wave2_val_arr[y][x] = WAVE_TILES[3]
 
-                    # Adds tiny wave corners
-                    if waves_arr[y][x + 1] + waves_arr[y + 1][x] == 2:
-                        if waves_layer_vals[y - 1 + 1][x - 1] in [WAVE_TILES[0], WAVE_TILES[1]]:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_CORNER_TILES[0]
-                            waves_layer_vals[y - 1 + 1][x - 1 + 1] = WAVE_CORNER_TILES2[0]
-                        if waves_layer_vals[y - 1][x - 1 + 1] == WAVE_TILES[7]:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_CORNER_TILES2[3]
-                            waves_layer_vals[y - 1 + 1][x - 1 + 1] = WAVE_CORNER_TILES[3]
+    wave_val_arr = np.where(wave2_val_arr == 0, wave_val_arr, wave2_val_arr)
+    wave3_val_arr = np.zeros((MAP_SIZE + 2, MAP_SIZE + 2), int)
+    for y in range(1, MAP_SIZE + 1):  # In this code I'm finding tile patterns by counting tiles of neighboring types in 3x3 and 2x2 groups instead of checking each tile in the group.
+        for x in range(1, MAP_SIZE + 1):
+            # Adds tiny wave corners
+            if wave_val_arr[y][x + 1] and wave_val_arr[y + 1][x]:
+                if wave_val_arr[y + 1][x] in [WAVE_TILES[0], WAVE_TILES[1]]:
+                    wave3_val_arr[y][x] = WAVE_CORNER_TILES[0]
+                    wave3_val_arr[y + 1][x + 1] = WAVE_CORNER_TILES2[0]
+                if wave_val_arr[y][x + 1] in [WAVE_TILES[7], WAVE_TILES[6]]:
+                    wave3_val_arr[y][x] = WAVE_CORNER_TILES2[3]
+                    wave3_val_arr[y + 1][x + 1] = WAVE_CORNER_TILES[3]
 
-                    if waves_arr[y][x - 1] + waves_arr[y + 1][x] == 2:
-                        if waves_layer_vals[y - 1][x - 1 - 1] in [WAVE_TILES[5], WAVE_TILES[6]]:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_CORNER_TILES2[2]
-                            waves_layer_vals[y - 1 + 1][x - 1 - 1] = WAVE_CORNER_TILES[2]
-                        if waves_layer_vals[y - 1 + 1][x - 1] == WAVE_TILES[2]:
-                            waves_layer_vals[y - 1][x - 1] = WAVE_CORNER_TILES[1]
-                            waves_layer_vals[y - 1 + 1][x - 1 + 1] = WAVE_CORNER_TILES2[1]
+            if wave_val_arr[y][x - 1] and wave_val_arr[y + 1][x]:
+                if wave_val_arr[y][x - 1] in [WAVE_TILES[5], WAVE_TILES[6]]:
+                    wave3_val_arr[y][x] = WAVE_CORNER_TILES2[2]
+                    wave3_val_arr[y + 1][x - 1] = WAVE_CORNER_TILES[2]
+                if wave_val_arr[y + 1][x] in [WAVE_TILES[2], WAVE_TILES[1]]:
+                    wave3_val_arr[y][x] = WAVE_CORNER_TILES[1]
+                    wave3_val_arr[y + 1][x - 1] = WAVE_CORNER_TILES2[1]
 
+    wave_val_arr = np.where(wave3_val_arr == 0, wave_val_arr, wave3_val_arr)
+    waves_layer_vals = wave_val_arr[1:-1, 1:-1] #Unpads the array.
 
     # Writes base layer
     print("Writing base layer...")
