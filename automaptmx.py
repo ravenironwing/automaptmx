@@ -635,7 +635,7 @@ def make_tmx():
                         if wave_val_arr[y + 1][x - 1] == WAVE_TILES[7]:
                             wave2_val_arr[y][x] = WAVE_TILES[7]
                         elif wave_val_arr[y + 1][x - 1] == WAVE_TILES[0]:
-                            wave2_val_arr[y][x] = WAVE_TILES[7]
+                            wave2_val_arr[y][x] = WAVE_TILES[0]
                     elif wave_val_arr[y - 1][x - 1] and wave_val_arr[y + 1][x + 1]:
                         if wave_val_arr[y - 1][x - 1] == WAVE_TILES[2]:
                             wave2_val_arr[y][x] = WAVE_TILES[2]
@@ -742,21 +742,44 @@ def make_tmx():
         for x in range(1, MAP_SIZE + 1):
             # Adds tiny wave corners
             if wave_val_arr[y][x] == 0:
+                # pos slope slanting waves
                 if wave_val_arr[y][x + 1] and wave_val_arr[y + 1][x]:
                     if wave_val_arr[y + 1][x] in [WAVE_TILES[0], WAVE_TILES[1]]:
                         wave3_val_arr[y][x] = WAVE_CORNER_TILES[0]
                         wave3_val_arr[y + 1][x + 1] = WAVE_CORNER_TILES2[0]
-                    if wave_val_arr[y][x + 1] in [WAVE_TILES[7], WAVE_TILES[6]]:
+                    elif wave_val_arr[y][x + 1] in [WAVE_TILES[7], WAVE_TILES[6]]:
                         wave3_val_arr[y][x] = WAVE_CORNER_TILES2[3]
                         wave3_val_arr[y + 1][x + 1] = WAVE_CORNER_TILES[3]
-
+                # neg slope slanting waves
                 if wave_val_arr[y][x - 1] and wave_val_arr[y + 1][x]:
                     if wave_val_arr[y][x - 1] in [WAVE_TILES[5], WAVE_TILES[6]]:
                         wave3_val_arr[y][x] = WAVE_CORNER_TILES2[2]
                         wave3_val_arr[y + 1][x - 1] = WAVE_CORNER_TILES[2]
-                    if wave_val_arr[y + 1][x] in [WAVE_TILES[2], WAVE_TILES[1]]:
+                    elif wave_val_arr[y + 1][x] in [WAVE_TILES[2], WAVE_TILES[1]]:
                         wave3_val_arr[y][x] = WAVE_CORNER_TILES[1]
                         wave3_val_arr[y + 1][x - 1] = WAVE_CORNER_TILES2[1]
+                # side by side switching waves.
+                if wave_val_arr[y + 1][x] and wave_val_arr[y + 1][x + 1]:
+                    if (wave_val_arr[y + 1][x] == WAVE_TILES[7]) and (wave_val_arr[y + 1][x + 1] == WAVE_TILES[5]):
+                        wave3_val_arr[y][x] = WAVE_CORNER_TILES2[3]
+                        wave3_val_arr[y][x + 1] = WAVE_CORNER_TILES2[2]
+                    elif (wave_val_arr[y + 1][x] == WAVE_TILES[2]) and (wave_val_arr[y + 1][x + 1] == WAVE_TILES[0]):
+                        try:
+                            wave3_val_arr[y + 2][x] = WAVE_CORNER_TILES2[1]
+                            wave3_val_arr[y + 2][x + 1] = WAVE_CORNER_TILES2[0]
+                        except:
+                            pass
+                if wave_val_arr[y][x + 1] and wave_val_arr[y + 1][x + 1]:
+                    if (wave_val_arr[y][x + 1] == WAVE_TILES[7]) and (wave_val_arr[y + 1][x + 1] == WAVE_TILES[2]):
+                        wave3_val_arr[y][x] = WAVE_CORNER_TILES2[3]
+                        wave3_val_arr[y + 1][x] = WAVE_CORNER_TILES2[1]
+                    elif (wave_val_arr[y][x + 1] == WAVE_TILES[5]) and (wave_val_arr[y + 1][x + 1] == WAVE_TILES[0]):
+                        try:
+                            wave3_val_arr[y][x + 2] = WAVE_CORNER_TILES2[2]
+                            wave3_val_arr[y + 1][x + 2] = WAVE_CORNER_TILES2[0]
+                        except:
+                            pass
+
 
     wave_val_arr = np.where(wave3_val_arr == 0, wave_val_arr, wave3_val_arr)
     waves_layer_vals = wave_val_arr[1:-1, 1:-1] #Unpads the array.
