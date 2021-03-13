@@ -340,7 +340,16 @@ def update_map():
 
 # Creates TMX file based off of noise+mask
 def make_tmx():
+    global world_noise
     print("Saving tmx file...")
+    # The wave_base_arr is used to create an underbase for wave placement that doesn't include all the noise. For smoother wave patterns.
+    temp_array = np.array(world_noise)
+    wave_base_arr = temp_array * 255
+    wave_base_img = wave_base_arr.astype('uint8')
+    wave_base_img = cv2.medianBlur(wave_base_img, 5)
+    wave_base_arr = wave_base_img / 255
+    world_noise = np.where(ocean_regions == 1, wave_base_arr, world_noise) # Combines the medianBlur filtered ocean with the base layer.
+
     max_num = 0
     min_num = 20
     #Makes base layer
@@ -349,8 +358,7 @@ def make_tmx():
         new_water_row = []
         for j in range(MAP_SIZE):
             x = world_noise[i][j]
-            newx = int(x * (KINDSOFTILES-1))
-            newx += 1  # Gets rid of zeros
+            newx = int(x * (KINDSOFTILES-1)) + 1
             if swamps_arr[i][j] == 1: # Swiches tiles to swamp tiles for swamp areas.
                 newx = newx + KINDSOFTILES #Switches to swamp tileset columns
             if newx > max_num:
@@ -416,7 +424,7 @@ def make_tmx():
                 num_ns_diag_tiles = ns_diag_list.count(tile)
                 num_ps_diag_tiles = ps_diag_list.count(tile)
 
-                # rounds out positive corners
+                # rounds out positive corners and adds corner waves.
                 if (num_tiles == 1) and (num_under_tiles == 3):
                     if arr1[x][y] == tile:
                         corners_layer_vals[x - 1][y - 1] = ul_corner(tile)
