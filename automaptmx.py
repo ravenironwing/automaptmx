@@ -40,7 +40,7 @@ for tree in MAIN_TREE_TILES:
             tile += 1
         tile += (TILESET_COLUMNS - TREE_DIMENTIONS)
 PALM_PROB = 10
-PINE_PROB = 10
+PINE_PROB = 7
 GREENTREE_PROB = 10
 DEADTREE_PROB = 10
 # Plant dictionaries are by tile and how common they are. Higher numbers are less common.
@@ -835,14 +835,14 @@ def make_tmx():
                             prob = DEADTREE_PROB
                         else:
                             tree = MAIN_TREE_TILES[3]
-                            prob = PINE_PROB
+                            prob = PINE_PROB * 2
                     elif (not beach_regions[y][x]) and (14 < base_layer_vals[y][x] < 17):
                         if random.randrange(0, 10) == 1:
                             tree = MAIN_TREE_TILES[0]
-                            prob = DEADTREE_PROB * 2
+                            prob = DEADTREE_PROB * 4
                         else:
                             tree = MAIN_TREE_TILES[3]
-                            prob = PINE_PROB * 2
+                            prob = PINE_PROB * 4
                     else:
                         place_tree = False
                     if place_tree and (random.randrange(0, prob * 10) == 1):
@@ -910,7 +910,6 @@ def make_tmx():
                     for plant, prob in MOUNTAIN_PLANTS.items():
                         if random.randrange(0, pfact*prob) == 1:
                             plant_layer_vals[y][x] = plant
-    waves_layer_vals = np.where(waves_layer_vals > 0, waves_layer_vals, plant_layer_vals)
 
     # Writes base layer
     print("Writing base layer...")
@@ -1014,9 +1013,9 @@ def make_tmx():
     outfile.write(footer)
 
     # Makes and writes waves and plants layer
-    print("Writing waves and plants layer...")
+    print("Writing waves layer...")
     waves_list = np.ndarray.tolist(waves_layer_vals)
-    next_layer_txt = """<layer id="6" name="Waves and Plants" width="{mapw}" height="{mapw}">
+    next_layer_txt = """<layer id="6" name="Waves" width="{mapw}" height="{mapw}">
       <data encoding="csv">""".format(mapw = str(MAP_SIZE))
     outfile.write(next_layer_txt)
     outfile.write("\n")
@@ -1033,9 +1032,28 @@ def make_tmx():
     outfile.write(footer)
 
     # Makes and writes waves and plants layer
+    print("Writing plants layer...")
+    plant_list = np.ndarray.tolist(plant_layer_vals)
+    next_layer_txt = """<layer id="7" name="Plants" width="{mapw}" height="{mapw}">
+      <data encoding="csv">""".format(mapw = str(MAP_SIZE))
+    outfile.write(next_layer_txt)
+    outfile.write("\n")
+    for i, y in enumerate(plant_list):
+        new_row_str = str(y)
+        new_row_str = new_row_str.replace('[', '')
+        new_row_str = new_row_str.replace(']', '')
+        if i != MAP_SIZE - 1:
+            new_row_str = new_row_str + ","
+        outfile.write(new_row_str)
+        outfile.write("\n")
+    footer = """</data>
+     </layer>"""
+    outfile.write(footer)
+
+    # Makes and writes waves and plants layer
     print("Writing tree layer...")
     tree_list = np.ndarray.tolist(tree_layer_vals)
-    next_layer_txt = """<layer id="7" name="Trees" width="{mapw}" height="{mapw}">
+    next_layer_txt = """<layer id="8" name="Trees" width="{mapw}" height="{mapw}">
       <data encoding="csv">""".format(mapw = str(MAP_SIZE))
     outfile.write(next_layer_txt)
     outfile.write("\n")
