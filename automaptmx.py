@@ -70,11 +70,9 @@ MASK_FACTOR = 0
 ELEVATION_FACTOR = 0
 SEALVL_FACTOR = 1
 
-base_layer_vals = []
-water_layer_vals = []
 BLACK = [0, 0, 0]
 colors = [[93, 120, 150], [108, 135, 168], [147, 174, 171], [165, 195, 228], [189, 219, 219], [261, 231, 174], [152, 118, 84], [102, 159, 69], [75, 141, 33], [102, 66, 45], [120, 105, 72], [123, 108, 84], [144, 144, 144], [168, 168, 168], [183, 183, 183], [225, 225, 243], [255, 255, 255], [240, 250, 255]]
-swampcolors = [[0, 105, 150], [0, 125, 130], [0, 145, 110], [0, 160, 100], [0, 165, 75], [0, 170, 55], [0, 180, 55], [0, 190, 55], [0, 205, 50], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+swampcolors = [[0, 105, 150], [0, 125, 130], [0, 145, 110], [0, 160, 100], [0, 165, 75], [0, 170, 55], [0, 180, 55], [0, 190, 55], [0, 205, 50], [0, 205, 50], [0, 205, 50], [0, 205, 50], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
 
 #newcolors = []
 #for color in colors:
@@ -229,10 +227,12 @@ def add_color(world):
                     else:
                         color_world[i][j] = colors[t]
                     break
+                elif world[i][j] >= threshold + 1:
+                    color_world[i][j] = colors[KINDSOFTILES-1]
     return color_world
 
 def new_map():
-    global scale_map_surface, world_noise, world, mask, swamps_mask, random_plant_noise
+    global scale_map_surface, world, mask, swamps_mask, random_plant_noise
     "Building new map..."
     # Noise settings
     # Creates a perlin noise array the size of the map.
@@ -266,7 +266,9 @@ def new_map():
 
 def update_map():
     global world_noise, scale_map_surface, world, mask, swamps_arr, MAX_SWAMP_SIZE, ocean_regions, beach_regions
-    swamps_arr = np.zeros((MAP_SIZE, MAP_SIZE), int)
+    swamps_arr = np.zeros((MAP_SIZE, MAP_SIZE), int)  # Used for storing regions that can be turned into swamps.
+    ocean_regions = np.zeros((MAP_SIZE, MAP_SIZE), int)  # Used to tell oceans/seas from lakes to add waves to.
+    beach_regions = np.zeros((MAP_SIZE, MAP_SIZE), int)  # Used to tell were the beaches are.
     print('Updating map...')
     # Combines mask image data with perlin noise
     world_noise = np.zeros_like(world)
@@ -280,10 +282,8 @@ def update_map():
         for j in range(MAP_SIZE):
             if sealvl_slider.val != 1: #Changes sea level
                 world_noise[i][j] *= sealvl_slider.val
-                if world_noise[i][j] > 0.99:
-                    world_noise[i][j] = 0.99
-                if world_noise[i][j] < 0.01:
-                    world_noise[i][j] = 0.01
+    world_noise = np.where(world_noise < 0, 0, world_noise)  # Gets rid of negatives.
+    world_noise = np.where(world_noise > 0.98, 0.98, world_noise)  # Gets rid of values above 1ish.
 
     # Figures out regions where swamps can be and stores each swamp region in a list.
     temp_array = np.array(world_noise)
@@ -300,6 +300,8 @@ def update_map():
     ocean_arr = np.where(temp_array < 6, 255, 0) # Used for finding where the oceans are.
     ocean_img = ocean_arr.astype('uint8')
     ocean_img = cv2.dilate(ocean_img, kernel, iterations=1)
+    water_img = ocean_img.copy()
+    water_regions = np.where(water_img > 0, 1, 0)
     shade = 0
     for x in range(MAP_SIZE):
         for y in range(MAP_SIZE):
@@ -309,15 +311,26 @@ def update_map():
                     shade = 255
                     break
                 cv2.floodFill(grass_img, None, (y, x), shade)
-                cv2.floodFill(ocean_img, None, (y, x), shade)
     swamps_list = []
     for color in range(0, shade):
         swamp_arr = np.where(grass_img == color, 1, 0)
-        ocean_arr = np.where(ocean_img == color, 1, 0)
         if np.count_nonzero(swamp_arr == 1) < MAX_SWAMP_SIZE:
             swamps_list.append(swamp_arr)
+
+    shade = 0
+    for x in range(MAP_SIZE):
+        for y in range(MAP_SIZE):
+            if ocean_img[x, y] == 255:
+                shade += 1
+                if shade > 255: # Limited to 255 swamps
+                    shade = 255
+                    break
+                cv2.floodFill(ocean_img, None, (y, x), shade)
+    for color in range(0, shade):
+        ocean_arr = np.where(ocean_img == color, 1, 0)
         if np.count_nonzero(ocean_arr == 1) > MIN_OCEAN_SIZE:
             ocean_regions = np.add(ocean_regions, ocean_arr) # Finds the ocean tiles to add waves to
+    ocean_regions = np.where(water_regions == 1, ocean_regions, 0) # Used for removing a bug introduced with floodFill. It removes all non water places from oceans.
     beach_arr = np.where(ocean_regions == 1, 255, 0)
     beach_img = beach_arr.astype('uint8')
     beach_regions = cv2.dilate(beach_img, kernel, iterations=20) # Used for palm trees and plant placement.
@@ -360,21 +373,30 @@ def make_tmx():
     temp_array = np.array(world_noise)
     wave_base_arr = temp_array * 255
     wave_base_img = wave_base_arr.astype('uint8')
+    #cv2.imshow('image', wave_base_img)
+    #cv2.waitKey(0)
     wave_base_img = cv2.medianBlur(wave_base_img, 5)
     wave_base_arr = wave_base_img / 255
     world_noise = np.where(ocean_regions == 1, wave_base_arr, world_noise) # Combines the medianBlur filtered ocean with the base layer.
+    #world_noise = np.where(world_noise < 0, 0, world_noise) # Gets rid of negatives.
 
     max_num = 0
     min_num = 20
     #Makes base layer
+    base_layer_vals = []
+    water_layer_vals = []
     for i in range(MAP_SIZE):
         new_base_row = []
         new_water_row = []
         for j in range(MAP_SIZE):
             x = world_noise[i][j]
             newx = int(x * (KINDSOFTILES-1)) + 1
+            if newx > KINDSOFTILES: # Prevents values from going out of range.
+                newx = KINDSOFTILES
             if swamps_arr[i][j] == 1: # Swiches tiles to swamp tiles for swamp areas.
                 newx = newx + KINDSOFTILES #Switches to swamp tileset columns
+                if newx > TILESET_COLUMNS: # Prevents out of range swamp values.
+                    newx = TILESET_COLUMNS
             if newx > max_num:
                 max_num = newx
             if newx < min_num:
@@ -1077,8 +1099,8 @@ def make_tmx():
 # UI elements
 ui = ravenui.UI(screen)
 mask_slider = ravenui.Slider(ui, "Ocean Depth", (10, 10), MASK_FACTOR, 0.4, 0, True)
-elev_slider = ravenui.Slider(ui, "Land Density", (112, 10), ELEVATION_FACTOR, 1, -1, True)
-sealvl_slider = ravenui.Slider(ui, "Elevation", (214, 10), SEALVL_FACTOR, 2, 0.0001, True)
+elev_slider = ravenui.Slider(ui, "Land Density", (112, 10), ELEVATION_FACTOR, 0.5, -0.9, True)
+sealvl_slider = ravenui.Slider(ui, "Elevation", (214, 10), SEALVL_FACTOR, 1.3, 0.0001, True)
 scale_slider = ravenui.Slider(ui, "Scale", (316, 10), 100, 200, 5, True)
 octaves_slider = ravenui.Slider(ui, "Octaves", (418, 10), 6, 10, 1)
 persistence_slider = ravenui.Slider(ui, "Persistence", (520, 10), 0.5, 1, 0.1, True)
