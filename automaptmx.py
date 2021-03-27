@@ -939,14 +939,15 @@ def make_tmx():
         for x in range(1, MAP_SIZE + 1):
             # Scans map 4 blocks at a time to find the corner pattern.
             find_list = [arr1[y][x], arr1[y+1][x], arr1[y][x+1], arr1[y+1][x+1]] # Makes a list of 4 tile block values. Checks for basic corners.
-            find_list2 = find_list.copy()
-            find_list2.extend([arr1[y - 1][x], arr1[y - 1][x -1], arr1[y][x - 1], arr1[y + 1][x - 1], arr1[y - 1][x + 1]])  # Makes a list of 9 tile block values. Advanced checks
-            hv_list = [arr1[y - 1][x], arr1[y + 1][x], arr1[y][x + 1], arr1[y][x - 1]]
-            lg_list = hv_list.copy()
-            lg_list.append(arr1[y][x]) #perpendicular tiles + center tile
-            diag_list = [arr1[y - 1][x - 1], arr1[y + 1][x - 1], arr1[y - 1][x + 1], arr1[y + 1][x + 1]]
-            ns_diag_list = [arr1[y - 1][x - 1], arr1[y + 1][x + 1]]
-            ps_diag_list = [arr1[y + 1][x - 1], arr1[y - 1][x + 1]]
+            if (arr1[y][x] == 0) and (arr1[y][x+1] > 0) and (river_edges[y - 1][x - 1] == 0):
+                river_edges[y - 1][x - 1] = hflip(RIVER_ROCKS[3])
+            if (arr1[y][x] > 0) and (arr1[y][x+1] == 0) and (river_edges[y - 1][x] == 0):
+                river_edges[y - 1][x] = RIVER_ROCKS[3]
+            if (arr1[y][x] == 0) and (arr1[y + 1][x] > 0) and (river_edges[y - 1][x - 1] == 0):
+                river_edges[y - 1][x - 1] = vdflip(RIVER_ROCKS[3])
+            if (arr1[y][x] > 0) and (arr1[y + 1][x] == 0) and (river_edges[y][x - 1] == 0):
+                river_edges[y][x - 1] = dflip(RIVER_ROCKS[3])
+
             if 0 not in find_list:
                 if not all(element == find_list[0] for element in find_list): # Checks to see if all river elements are the same if not changes them into lake water.
                     rivers[y - 1][x - 1] = rivers[y][x - 1] = rivers[y - 1][x] = rivers[y][x] = LAKE_SHALLOWS
@@ -1223,14 +1224,14 @@ def make_tmx():
      </layer>"""
     outfile.write(footer)
 
-    # Makes and writes waves and plants layer
-    print("Writing waves layer...")
-    waves_list = np.ndarray.tolist(waves_layer_vals)
-    next_layer_txt = """<layer id="6" name="Waves" width="{mapw}" height="{mapw}">
+    # Makes and writes rivers layer
+    print("Writing rivers layer...")
+    rivers_list = np.ndarray.tolist(rivers)
+    next_layer_txt = """<layer id="6" name="Rivers" width="{mapw}" height="{mapw}">
       <data encoding="csv">""".format(mapw = str(MAP_SIZE))
     outfile.write(next_layer_txt)
     outfile.write("\n")
-    for i, y in enumerate(waves_list):
+    for i, y in enumerate(rivers_list):
         new_row_str = str(y)
         new_row_str = new_row_str.replace('[', '')
         new_row_str = new_row_str.replace(']', '')
@@ -1242,14 +1243,14 @@ def make_tmx():
      </layer>"""
     outfile.write(footer)
 
-    # Makes and writes rivers layer
-    print("Writing rivers layer...")
-    rivers_list = np.ndarray.tolist(rivers)
-    next_layer_txt = """<layer id="7" name="Rivers" width="{mapw}" height="{mapw}">
+    # Makes and writes waves and plants layer
+    print("Writing waves layer...")
+    waves_list = np.ndarray.tolist(waves_layer_vals)
+    next_layer_txt = """<layer id="7" name="Waves" width="{mapw}" height="{mapw}">
       <data encoding="csv">""".format(mapw = str(MAP_SIZE))
     outfile.write(next_layer_txt)
     outfile.write("\n")
-    for i, y in enumerate(rivers_list):
+    for i, y in enumerate(waves_list):
         new_row_str = str(y)
         new_row_str = new_row_str.replace('[', '')
         new_row_str = new_row_str.replace(']', '')
