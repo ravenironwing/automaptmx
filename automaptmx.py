@@ -4,6 +4,7 @@ import numpy as np
 import pygame as pg
 import noise, cv2 # pip3 install opencv-python
 import random
+vec = pg.math.Vector2
 from PIL import Image
 
 WIDTH = 800
@@ -26,6 +27,10 @@ SWAMP_SHALLOWS = 219
 SWAMP_WATER = 220
 LAKE_SHALLOWS = 221
 LAKE_WATER = 222
+RIVER_TILES = [224, 223, 225, 226]
+RIVER_CHANCE = 5
+RIVER_DIRCHANCE = 10
+RIVER_ROCKS = [636, 637, 638, 639, 640]
 WAVE_TILES = [231, 232, 233,258, 260, 285, 286, 287]
 WAVE_CORNER_TILES = [237, 238, 480, 481]
 WAVE_CORNER_TILES2 = [265, 264, 454, 453]
@@ -73,6 +78,7 @@ SEALVL_FACTOR = 1
 BLACK = [0, 0, 0]
 colors = [[93, 120, 150], [108, 135, 168], [147, 174, 171], [165, 195, 228], [189, 219, 219], [261, 231, 174], [152, 118, 84], [102, 159, 69], [75, 141, 33], [102, 66, 45], [120, 105, 72], [123, 108, 84], [144, 144, 144], [168, 168, 168], [183, 183, 183], [225, 225, 243], [255, 255, 255], [240, 250, 255]]
 swampcolors = [[0, 105, 150], [0, 125, 130], [0, 145, 110], [0, 160, 100], [0, 165, 75], [0, 170, 55], [0, 180, 55], [0, 190, 55], [0, 205, 50], [0, 205, 50], [0, 205, 50], [0, 205, 50], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+RIVER_COLOR = [0, 0, 255]
 
 #newcolors = []
 #for color in colors:
@@ -88,9 +94,13 @@ scale_map_surface = pg.Surface((500, 500)).convert()
 world_noise = np.zeros((MAP_SIZE, MAP_SIZE))
 random_plant_noise = np.zeros((MAP_SIZE, MAP_SIZE))
 world = np.zeros((MAP_SIZE, MAP_SIZE))
+river_edges = np.zeros((MAP_SIZE, MAP_SIZE), int)
+river_edges2 = np.zeros((MAP_SIZE, MAP_SIZE), int)
+deep_river_arr = np.zeros((MAP_SIZE, MAP_SIZE), int)
 swamps_arr = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used for storing regions that can be turned into swamps.
 ocean_regions = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used to tell oceans/seas from lakes to add waves to.
 beach_regions = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used to tell were the beaches are.
+rivers = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used for river layer.
 img = cv2.imread("mapmask1.png", 0)
 mask = img / 255.0
 
@@ -116,6 +126,68 @@ def return_flags(bitnum): # Used for returning the rotational flags of a tile so
          return 0x80000000 | 0x40000000
     else:
         return 0x80000000 | 0x40000000 | 0x20000000
+
+def make_river(tbase, y, x, dr, count = 0):
+    global rivers, world_noise, swamps_arr, river_edges, river_edges2
+    print(world_noise[y, x])
+    if (count < 900) and (tbase[y, x] > 5) and (swamps_arr[y, x] == 0):
+        upv = world_noise[y - 1, x]
+        dnv = world_noise[y + 1, x]
+        ltv = world_noise[y, x - 1]
+        rtv = world_noise[y, x + 1]
+        cpv = world_noise[y, x]
+        px = x
+        py = y
+        dirlist = [upv, dnv, ltv, rtv]
+        xposlist = [x, x, x - 1, x + 1]
+        yposlist = [y - 1, y + 1, y, y]
+        minpos = dirlist.index(min(dirlist))
+        x = xposlist[minpos]
+        y = yposlist[minpos]
+        if cpv < world_noise[y, x]: #Raises up current tile if it's a local minimum.
+            world_noise[py, px] = world_noise[y, x] + 0.005
+        if rivers[y, x] == 0:
+            rivers[y, x] = RIVER_TILES[minpos]
+        else:
+            minpos = dirlist.index(sorted(dirlist)[1])
+            x = xposlist[minpos]
+            y = yposlist[minpos]
+            if rivers[y, x] == 0:
+                rivers[y, x] = RIVER_TILES[minpos]
+            else:
+                minpos = dirlist.index(sorted(dirlist)[2])
+                x = xposlist[minpos]
+                y = yposlist[minpos]
+                if rivers[y, x] == 0:
+                    rivers[y, x] = RIVER_TILES[minpos]
+                else:
+                    minpos = dirlist.index(sorted(dirlist)[3])
+                    x = xposlist[minpos]
+                    y = yposlist[minpos]
+                    if rivers[y, x] == 0:
+                        rivers[y, x] = RIVER_TILES[minpos]
+        if minpos in [0, 1]:
+            if river_edges[y, x + 1] == 0:
+                river_edges[y, x + 1] = RIVER_ROCKS[3]
+            else:
+                river_edges2[y, x + 1] = RIVER_ROCKS[3]
+            if river_edges[y, x - 1] == 0:
+                river_edges[y, x - 1] = hflip(RIVER_ROCKS[3])
+            else:
+                river_edges2[y, x - 1] = hflip(RIVER_ROCKS[3])
+        if minpos in [2, 3]:
+            if river_edges[y + 1, x] == 0:
+                river_edges[y + 1, x] = dflip(RIVER_ROCKS[3])
+            else:
+                river_edges2[y + 1, x] = dflip(RIVER_ROCKS[3])
+            if river_edges[y - 1, x] == 0:
+                river_edges[y - 1, x] = vdflip(RIVER_ROCKS[3])
+            else:
+                river_edges2[y - 1, x] = vdflip(RIVER_ROCKS[3])
+
+        count += 1
+        make_river(tbase, y, x, dr, count)
+
 
 def ul_corner(tile):
     tile += TILESET_COLUMNS #Shifts tile ID down to corner row
@@ -201,6 +273,25 @@ def nlr_corner(tile):
     tile = tile | 0x40000000 #Vertical flip
     return tile
 
+def hflip(tile):
+    tile = tile | 0x80000000  # Horizontal flip
+    return tile
+def vflip(tile):
+    tile = tile | 0x40000000  # Vertical flip
+    return tile
+def hvflip(tile):
+    tile = vflip(hflip(tile))
+    return tile
+def dflip(tile):
+    tile = tile | 0x20000000  # diagonal flip
+    return tile
+def hdflip(tile):
+    tile = dflip(hflip(tile))
+    return tile
+def vdflip(tile):
+    tile = dflip(vflip(tile))
+    return tile
+
 def switch_noise():
     global noise_type, noise_txt
     if noise_type == noise.snoise2:
@@ -229,6 +320,8 @@ def add_color(world):
                     break
                 elif world[i][j] >= threshold + 1:
                     color_world[i][j] = colors[KINDSOFTILES-1]
+            if rivers[i][j]:
+                color_world[i][j] = RIVER_COLOR
     return color_world
 
 def new_map():
@@ -265,8 +358,9 @@ def new_map():
     update_map()
 
 def update_map():
-    global world_noise, scale_map_surface, world, mask, swamps_arr, MAX_SWAMP_SIZE, ocean_regions, beach_regions
+    global world_noise, scale_map_surface, world, mask, swamps_arr, MAX_SWAMP_SIZE, ocean_regions, beach_regions, rivers, deep_river_arr
     swamps_arr = np.zeros((MAP_SIZE, MAP_SIZE), int)  # Used for storing regions that can be turned into swamps.
+    snow_arr = np.zeros((MAP_SIZE, MAP_SIZE), int)
     ocean_regions = np.zeros((MAP_SIZE, MAP_SIZE), int)  # Used to tell oceans/seas from lakes to add waves to.
     beach_regions = np.zeros((MAP_SIZE, MAP_SIZE), int)  # Used to tell were the beaches are.
     print('Updating map...')
@@ -293,6 +387,8 @@ def update_map():
             newx = int(x * (KINDSOFTILES - 1))
             newx += 1  # Gets rid of zeros
             temp_array[i][j] = newx
+            if newx == 17:
+                snow_arr[i][j] = 1 # Marks potential spots for river heads in snowy areas.
     grass_arr = np.where(temp_array < 9, 255, 0)
     grass_img = grass_arr.astype('uint8')
     kernel = np.ones((3, 3), np.uint8)
@@ -326,6 +422,8 @@ def update_map():
                     shade = 255
                     break
                 cv2.floodFill(ocean_img, None, (y, x), shade)
+
+    # Finds ocean areas.
     for color in range(0, shade):
         ocean_arr = np.where(ocean_img == color, 1, 0)
         if np.count_nonzero(ocean_arr == 1) > MIN_OCEAN_SIZE:
@@ -343,15 +441,31 @@ def update_map():
     swamps_list = random.sample(swamps_list, num_swamps) # Reduces number of swamps in list to up to the selected number.
     for swamp in swamps_list:
         swamps_arr = np.add(swamps_arr, swamp)
-    
-    """
-    # Combines swamp noise with world noise then scales it.
-    swamps_noise = np.zeros_like(world)
+
+    # Creates rivers
     for i in range(MAP_SIZE):
         for j in range(MAP_SIZE):
-            swamps_noise[i][j] = ((world_noise[i][j]) * (swamps_mask[i][j]))
-    max_grad = np.amax(swamps_noise)
-    swamps_noise = swamps_noise / max_grad"""
+            if snow_arr[i][j] == 1:
+                count = [0, 0, 0, 0]
+                # Marks first tiles for river heads then creates rivers where they flow to the ocean or lakes.
+                if temp_array[i - 1][j] == (temp_array[i][j] - 1):
+                    if random.randrange(0, RIVER_CHANCE) == 1:
+                        make_river(temp_array, i, j, 1)
+                if temp_array[i + 1][j] == (temp_array[i][j] - 1):
+                    if random.randrange(0, RIVER_CHANCE) == 1:
+                        make_river(temp_array, i, j, 0)
+                if temp_array[i][j - 1] == (temp_array[i][j] - 1):
+                    if random.randrange(0, RIVER_CHANCE) == 1:
+                        make_river(temp_array, i, j, 3)
+                if temp_array[i][j + 1] == (temp_array[i][j] - 1):
+                    if random.randrange(0, RIVER_CHANCE) == 1:
+                        make_river(temp_array, i, j, 2)
+
+    ocean_regions = np.where(water_regions == 1, ocean_regions, 0) # Used for removing a bug introduced with floodFill. It removes all non water places from oceans.
+    deep_river_arr = np.where(rivers > 0, 255, 0)
+    deep_river_img = deep_river_arr.astype('uint8')
+    deep_river_arr = cv2.erode(deep_river_img, kernel, iterations=1)
+    deep_river_arr = np.where(deep_river_arr > 125, 1, 0)
 
     # Colors array and converts to pygame surface
     continent_grad = add_color(world_noise)
@@ -367,7 +481,7 @@ def update_map():
 
 # Creates TMX file based off of noise+mask
 def make_tmx():
-    global world_noise, random_plant_noise
+    global world_noise, random_plant_noise, rivers, river_edges, deep_river_arr
     print("Saving tmx file...")
     # The wave_base_arr is used to create an underbase for wave placement that doesn't include all the noise. For smoother wave patterns.
     temp_array = np.array(world_noise)
@@ -817,6 +931,56 @@ def make_tmx():
                             pass
     wave_val_arr = np.where(wave3_val_arr == 0, wave_val_arr, wave3_val_arr)
     waves_layer_vals = wave_val_arr[1:-1, 1:-1] #Unpads the array.
+    
+    # Alters river tiles to look better by changing some tiles to non directional lake water. Refines river rock edges.
+    arr1 = np.pad(rivers, pad_width=1, mode='constant', constant_values=0)
+    # I know I screwed up and my x's and y's are switched in this loop.... But it works.
+    for y in range(1, MAP_SIZE + 1):  
+        for x in range(1, MAP_SIZE + 1):
+            # Scans map 4 blocks at a time to find the corner pattern.
+            find_list = [arr1[y][x], arr1[y+1][x], arr1[y][x+1], arr1[y+1][x+1]] # Makes a list of 4 tile block values. Checks for basic corners.
+            find_list2 = find_list.copy()
+            find_list2.extend([arr1[y - 1][x], arr1[y - 1][x -1], arr1[y][x - 1], arr1[y + 1][x - 1], arr1[y - 1][x + 1]])  # Makes a list of 9 tile block values. Advanced checks
+            hv_list = [arr1[y - 1][x], arr1[y + 1][x], arr1[y][x + 1], arr1[y][x - 1]]
+            lg_list = hv_list.copy()
+            lg_list.append(arr1[y][x]) #perpendicular tiles + center tile
+            diag_list = [arr1[y - 1][x - 1], arr1[y + 1][x - 1], arr1[y - 1][x + 1], arr1[y + 1][x + 1]]
+            ns_diag_list = [arr1[y - 1][x - 1], arr1[y + 1][x + 1]]
+            ps_diag_list = [arr1[y + 1][x - 1], arr1[y - 1][x + 1]]
+            if 0 not in find_list:
+                if not all(element == find_list[0] for element in find_list): # Checks to see if all river elements are the same if not changes them into lake water.
+                    rivers[y - 1][x - 1] = rivers[y][x - 1] = rivers[y - 1][x] = rivers[y][x] = LAKE_SHALLOWS
+            if find_list.count(0) == 1:
+                if rivers[y - 1][x - 1] > 0:
+                    rivers[y - 1][x - 1] = LAKE_SHALLOWS
+                elif 0 in [river_edges[y - 1][x - 1], river_edges2[y - 1][x - 1]]:
+                        river_edges[y - 1][x - 1] = hflip(RIVER_ROCKS[3])
+                        river_edges2[y - 1][x - 1] = vdflip(RIVER_ROCKS[3])
+                if rivers[y][x - 1] > 0:
+                    rivers[y][x - 1] = LAKE_SHALLOWS
+                elif 0 in [river_edges[y][x - 1], river_edges2[y][x - 1]]:
+                    river_edges[y][x - 1] = hflip(RIVER_ROCKS[3])
+                    river_edges2[y][x - 1] = dflip(RIVER_ROCKS[3])
+                if rivers[y - 1][x] > 0:
+                    rivers[y - 1][x] = LAKE_SHALLOWS
+                elif 0 in [river_edges[y - 1][x], river_edges2[y - 1][x]]:
+                    river_edges[y - 1][x] = RIVER_ROCKS[3]
+                    river_edges2[y - 1][x] = vdflip(RIVER_ROCKS[3])
+                if rivers[y][x] > 0:
+                    rivers[y][x] = LAKE_SHALLOWS
+                elif 0 in [river_edges[y][x], river_edges2[y][x]]:
+                    river_edges[y][x] = RIVER_ROCKS[3]
+                    river_edges2[y][x] = dflip(RIVER_ROCKS[3])
+            if find_list.count(0) == 3: # Adds river rock edges.
+                if rivers[y - 1][x - 1] > 0:
+                    river_edges[y][x] = RIVER_ROCKS[4]
+                if rivers[y][x - 1] > 0:
+                    river_edges[y - 1][x] = vflip(RIVER_ROCKS[4])
+                if rivers[y - 1][x] > 0:
+                    river_edges[y][x - 1] = hflip(RIVER_ROCKS[4])
+                if rivers[y][x] > 0:
+                    river_edges[y - 1][x - 1] = hvflip(RIVER_ROCKS[4])
+
 
     plant_layer_vals = np.zeros((MAP_SIZE, MAP_SIZE), int)
     tree_layer_vals = np.zeros((MAP_SIZE, MAP_SIZE), int)
@@ -824,114 +988,139 @@ def make_tmx():
     print("Addinig plants...")
     for y in range(0, MAP_SIZE):
         for x in range(0, MAP_SIZE):
-            if  (ocean_regions[y][x] == 0) and (y < MAP_SIZE - TREE_DIMENTIONS) and (x < MAP_SIZE - TREE_DIMENTIONS): # Keeps it for going out of range.
-                if random.randrange(0, 10): # Only does tree checks every 10th tile on average.
-                    tree_scope = [tree_layer_vals[y][x], tree_layer_vals[y][x+1], tree_layer_vals[y][x+2], tree_layer_vals[y][x+3], tree_layer_vals[y][x+4], tree_layer_vals[y][x+5], tree_layer_vals[y][x+6],
-                                  tree_layer_vals[y+1][x], tree_layer_vals[y+1][x+1], tree_layer_vals[y+1][x+2], tree_layer_vals[y+1][x+3], tree_layer_vals[y+1][x+4], tree_layer_vals[y+1][x+5], tree_layer_vals[y+1][x+6],
-                                  tree_layer_vals[y +2][x], tree_layer_vals[y +2][x+1], tree_layer_vals[y +2][x+2], tree_layer_vals[y +2][x+3], tree_layer_vals[y +2][x+4], tree_layer_vals[y +2][x+5], tree_layer_vals[y +2][x+6],
-                                  tree_layer_vals[y +3][x], tree_layer_vals[y +3][x+1], tree_layer_vals[y +3][x+2], tree_layer_vals[y +3][x+3], tree_layer_vals[y +3][x+4], tree_layer_vals[y +3][x+5], tree_layer_vals[y +3][x+6],
-                                  tree_layer_vals[y +4][x], tree_layer_vals[y +4][x+1], tree_layer_vals[y +4][x+2], tree_layer_vals[y +4][x+3], tree_layer_vals[y +4][x+4], tree_layer_vals[y +4][x+5], tree_layer_vals[y +4][x+6],
-                                  tree_layer_vals[y +5][x], tree_layer_vals[y +5][x+1], tree_layer_vals[y +5][x+2], tree_layer_vals[y +5][x+3], tree_layer_vals[y +5][x+4], tree_layer_vals[y +5][x+5], tree_layer_vals[y +5][x+6],
-                                  tree_layer_vals[y +6][x], tree_layer_vals[y +6][x+1], tree_layer_vals[y +6][x+2], tree_layer_vals[y +6][x+3], tree_layer_vals[y +6][x+4], tree_layer_vals[y +6][x+5], tree_layer_vals[y +6][x+6]]
-                    # Trees
-                    place_tree = True
-                    if beach_regions[y][x] and (6 < base_layer_vals[y][x] < 11):
-                        tree = MAIN_TREE_TILES[2]
-                        prob = PALM_PROB
-                    elif (not beach_regions[y][x]) and base_layer_vals[y][x] in [8, 9]:
-                        tree = MAIN_TREE_TILES[1]
-                        prob = GREENTREE_PROB
-                    elif (not beach_regions[y][x]) and base_layer_vals[y][x] in [10, 11]:
-                        if random.randrange(0, 3) == 1:
-                            tree = MAIN_TREE_TILES[3]
-                            prob = PINE_PROB
-                        elif random.randrange(0, 10) == 1:
-                            tree = MAIN_TREE_TILES[0]
-                            prob = DEADTREE_PROB
-                        else:
+            if rivers[y][x] == 0:
+                if (ocean_regions[y][x] == 0) and (y < MAP_SIZE - TREE_DIMENTIONS) and (x < MAP_SIZE - TREE_DIMENTIONS): # Keeps it for going out of range.
+                    if random.randrange(0, 10): # Only does tree checks every 10th tile on average.
+                        tree_scope = [tree_layer_vals[y][x], tree_layer_vals[y][x+1], tree_layer_vals[y][x+2], tree_layer_vals[y][x+3], tree_layer_vals[y][x+4], tree_layer_vals[y][x+5], tree_layer_vals[y][x+6],
+                                      tree_layer_vals[y+1][x], tree_layer_vals[y+1][x+1], tree_layer_vals[y+1][x+2], tree_layer_vals[y+1][x+3], tree_layer_vals[y+1][x+4], tree_layer_vals[y+1][x+5], tree_layer_vals[y+1][x+6],
+                                      tree_layer_vals[y +2][x], tree_layer_vals[y +2][x+1], tree_layer_vals[y +2][x+2], tree_layer_vals[y +2][x+3], tree_layer_vals[y +2][x+4], tree_layer_vals[y +2][x+5], tree_layer_vals[y +2][x+6],
+                                      tree_layer_vals[y +3][x], tree_layer_vals[y +3][x+1], tree_layer_vals[y +3][x+2], tree_layer_vals[y +3][x+3], tree_layer_vals[y +3][x+4], tree_layer_vals[y +3][x+5], tree_layer_vals[y +3][x+6],
+                                      tree_layer_vals[y +4][x], tree_layer_vals[y +4][x+1], tree_layer_vals[y +4][x+2], tree_layer_vals[y +4][x+3], tree_layer_vals[y +4][x+4], tree_layer_vals[y +4][x+5], tree_layer_vals[y +4][x+6],
+                                      tree_layer_vals[y +5][x], tree_layer_vals[y +5][x+1], tree_layer_vals[y +5][x+2], tree_layer_vals[y +5][x+3], tree_layer_vals[y +5][x+4], tree_layer_vals[y +5][x+5], tree_layer_vals[y +5][x+6],
+                                      tree_layer_vals[y +6][x], tree_layer_vals[y +6][x+1], tree_layer_vals[y +6][x+2], tree_layer_vals[y +6][x+3], tree_layer_vals[y +6][x+4], tree_layer_vals[y +6][x+5], tree_layer_vals[y +6][x+6]]
+                        # Trees
+                        place_tree = True
+                        if beach_regions[y][x] and (6 < base_layer_vals[y][x] < 11):
+                            tree = MAIN_TREE_TILES[2]
+                            prob = PALM_PROB
+                        elif (not beach_regions[y][x]) and base_layer_vals[y][x] in [8, 9]:
                             tree = MAIN_TREE_TILES[1]
                             prob = GREENTREE_PROB
-                    elif (not beach_regions[y][x]) and (11 < base_layer_vals[y][x] < 14):
-                        if random.randrange(0, 10) == 1:
-                            tree = MAIN_TREE_TILES[0]
-                            prob = DEADTREE_PROB
+                        elif (not beach_regions[y][x]) and base_layer_vals[y][x] in [10, 11]:
+                            if random.randrange(0, 3) == 1:
+                                tree = MAIN_TREE_TILES[3]
+                                prob = PINE_PROB
+                            elif random.randrange(0, 10) == 1:
+                                tree = MAIN_TREE_TILES[0]
+                                prob = DEADTREE_PROB
+                            else:
+                                tree = MAIN_TREE_TILES[1]
+                                prob = GREENTREE_PROB
+                        elif (not beach_regions[y][x]) and (11 < base_layer_vals[y][x] < 14):
+                            if random.randrange(0, 10) == 1:
+                                tree = MAIN_TREE_TILES[0]
+                                prob = DEADTREE_PROB
+                            else:
+                                tree = MAIN_TREE_TILES[3]
+                                prob = PINE_PROB * 2
+                        elif (not beach_regions[y][x]) and (14 < base_layer_vals[y][x] < 17):
+                            if random.randrange(0, 10) == 1:
+                                tree = MAIN_TREE_TILES[0]
+                                prob = DEADTREE_PROB * 4
+                            else:
+                                tree = MAIN_TREE_TILES[3]
+                                prob = PINE_PROB * 4
                         else:
-                            tree = MAIN_TREE_TILES[3]
-                            prob = PINE_PROB * 2
-                    elif (not beach_regions[y][x]) and (14 < base_layer_vals[y][x] < 17):
-                        if random.randrange(0, 10) == 1:
-                            tree = MAIN_TREE_TILES[0]
-                            prob = DEADTREE_PROB * 4
-                        else:
-                            tree = MAIN_TREE_TILES[3]
-                            prob = PINE_PROB * 4
-                    else:
-                        place_tree = False
-                    if place_tree and (random.randrange(0, prob * 10) == 1):
-                        for tile in tree_scope:
-                            if tile in ALL_TREE_TILES: # checks to see if there are already tree tiles before placing a tree.
-                                place_tree = False
-                                continue
-                        if place_tree:
-                            tile = tree
-                            for i in range(0, TREE_DIMENTIONS):
-                                for j in range(0, TREE_DIMENTIONS):
-                                    tree_layer_vals[y + i][x + j] = tile
-                                    tile += 1
-                                tile += (TILESET_COLUMNS - TREE_DIMENTIONS)
+                            place_tree = False
+                        if place_tree and (random.randrange(0, prob * 10) == 1):
+                            for tile in tree_scope:
+                                if tile in ALL_TREE_TILES: # checks to see if there are already tree tiles before placing a tree.
+                                    place_tree = False
+                                    continue
+                            if place_tree:
+                                tile = tree
+                                for i in range(0, TREE_DIMENTIONS):
+                                    for j in range(0, TREE_DIMENTIONS):
+                                        tree_layer_vals[y + i][x + j] = tile
+                                        tile += 1
+                                    tile += (TILESET_COLUMNS - TREE_DIMENTIONS)
 
-            # Plants
-            if base_layer_vals[y][x] == 8: # If grassland.
-                if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
-                    for plant, prob in GRASSLAND_PLANTS.items():
-                        if random.randrange(0, GPLANT_FACT*prob) == 1:
-                            plant_layer_vals[y][x] = plant
-            elif (water_layer_vals[y][x] == WATER_TILE) and (ocean_regions[y][x]): # If ocean.
-                if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
-                    if base_layer_vals[y][x] == 4:
-                        pfact = OPLANT_FACT * 10
-                    elif base_layer_vals[y][x] == 3:
-                        pfact = OPLANT_FACT * 3
-                    elif base_layer_vals[y][x] == 2:
-                        pfact = OPLANT_FACT
-                    elif base_layer_vals[y][x] == 1:
-                        pfact = OPLANT_FACT * 100
-                    else:
-                        continue
-                    for plant, prob in OCEAN_PLANTS.items():
-                        if random.randrange(0, pfact*prob) == 1:
-                            corners_layer_vals[y][x] = plant # Puts them under the water.
-            elif base_layer_vals[y][x] == 10:  # Forest
-                if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
-                    for plant, prob in FOREST_PLANTS.items():
-                        if random.randrange(0, FPLANT_FACT*prob) == 1:
-                            plant_layer_vals[y][x] = plant
-            elif water_layer_vals[y][x] in [SWAMP_SHALLOWS]:  # Swamp water
-                if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
-                    for plant, prob in SWAMPW_PLANTS.items():
-                        if random.randrange(0, SPLANTW_FACT*prob) == 1:
-                            plant_layer_vals[y][x] = plant
-            elif base_layer_vals[y][x] in [26, 27]:  # swamp (not in water)
-                if corners_layer_vals[y][x] == 0:
-                    for plant, prob in SWAMPD_PLANTS.items():
-                        if random.randrange(0, SPLANTD_FACT * prob) == 1:
-                            plant_layer_vals[y][x] = plant
-            elif (base_layer_vals[y][x] == 6) and (not beach_regions[y][x]):  # desert
-                if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
-                    for plant, prob in DESERT_PLANTS.items():
-                        if random.randrange(0, DPLANT_FACT*prob) == 1:
-                            plant_layer_vals[y][x] = plant
-            elif (base_layer_vals[y][x] == 7) and (not beach_regions[y][x]):  # dirt not near beaches
-                if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
-                    for plant, prob in WASTELAND_PLANTS.items():
-                        if random.randrange(0, WPLANT_FACT*prob) == 1:
-                            plant_layer_vals[y][x] = plant
-            elif 10 < base_layer_vals[y][x] < 17: # If mountains
-                if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
-                    pfact = (base_layer_vals[y][x] - 10) * MPLANT_FACT
-                    for plant, prob in MOUNTAIN_PLANTS.items():
-                        if random.randrange(0, pfact*prob) == 1:
-                            plant_layer_vals[y][x] = plant
+                # Plants
+                if base_layer_vals[y][x] == 8: # If grassland.
+                    if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
+                        for plant, prob in GRASSLAND_PLANTS.items():
+                            if random.randrange(0, GPLANT_FACT*prob) == 1:
+                                plant_layer_vals[y][x] = plant
+                elif (water_layer_vals[y][x] == WATER_TILE) and (ocean_regions[y][x]): # If ocean.
+                    if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
+                        if base_layer_vals[y][x] == 4:
+                            pfact = OPLANT_FACT * 10
+                        elif base_layer_vals[y][x] == 3:
+                            pfact = OPLANT_FACT * 3
+                        elif base_layer_vals[y][x] == 2:
+                            pfact = OPLANT_FACT
+                        elif base_layer_vals[y][x] == 1:
+                            pfact = OPLANT_FACT * 100
+                        else:
+                            continue
+                        for plant, prob in OCEAN_PLANTS.items():
+                            if random.randrange(0, pfact*prob) == 1:
+                                corners_layer_vals[y][x] = plant # Puts them under the water.
+                elif base_layer_vals[y][x] == 10:  # Forest
+                    if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
+                        for plant, prob in FOREST_PLANTS.items():
+                            if random.randrange(0, FPLANT_FACT*prob) == 1:
+                                plant_layer_vals[y][x] = plant
+                elif water_layer_vals[y][x] in [SWAMP_SHALLOWS]:  # Swamp water
+                    if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
+                        for plant, prob in SWAMPW_PLANTS.items():
+                            if random.randrange(0, SPLANTW_FACT*prob) == 1:
+                                plant_layer_vals[y][x] = plant
+                elif base_layer_vals[y][x] in [26, 27]:  # swamp (not in water)
+                    if corners_layer_vals[y][x] == 0:
+                        for plant, prob in SWAMPD_PLANTS.items():
+                            if random.randrange(0, SPLANTD_FACT * prob) == 1:
+                                plant_layer_vals[y][x] = plant
+                elif (base_layer_vals[y][x] == 6) and (not beach_regions[y][x]):  # desert
+                    if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
+                        for plant, prob in DESERT_PLANTS.items():
+                            if random.randrange(0, DPLANT_FACT*prob) == 1:
+                                plant_layer_vals[y][x] = plant
+                elif (base_layer_vals[y][x] == 7) and (not beach_regions[y][x]):  # dirt not near beaches
+                    if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
+                        for plant, prob in WASTELAND_PLANTS.items():
+                            if random.randrange(0, WPLANT_FACT*prob) == 1:
+                                plant_layer_vals[y][x] = plant
+                elif 10 < base_layer_vals[y][x] < 17: # If mountains
+                    if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
+                        pfact = (base_layer_vals[y][x] - 10) * MPLANT_FACT
+                        for plant, prob in MOUNTAIN_PLANTS.items():
+                            if random.randrange(0, pfact*prob) == 1:
+                                plant_layer_vals[y][x] = plant
+
+    # Puts river rocks under rivers.
+    rivers = np.where(deep_river_arr == 0, rivers, LAKE_WATER) # Creates deep water in ponds and lakes.
+    river_edges = np.where(rivers == 0, river_edges, RIVER_ROCKS[0])
+    overlay_layer_vals = np.where(river_edges == 0, overlay_layer_vals, river_edges)
+    overlay2_layer_vals = np.where(river_edges2 == 0, overlay2_layer_vals, river_edges2)
+
+    # Gets rid of flowing river edges along lakes, ponds and wide rivers
+    arr1 = np.pad(rivers, pad_width=1, mode='constant', constant_values=0)
+    # I know I screwed up and my x's and y's are switched in this loop.... But it works.
+    for y in range(1, MAP_SIZE + 1):
+        for x in range(1, MAP_SIZE + 1):
+            # Scans map 4 blocks at a time to find the corner pattern.
+            if arr1[y][x] in RIVER_TILES:
+                if arr1[y+1][x] == LAKE_WATER:
+                    rivers[y - 1][x - 1] = LAKE_SHALLOWS
+                if arr1[y][x+1] == LAKE_WATER:
+                    rivers[y - 1][x - 1] = LAKE_SHALLOWS
+            if arr1[y+1][x] in RIVER_TILES:
+                if arr1[y][x] == LAKE_WATER:
+                    rivers[y][x - 1] = LAKE_SHALLOWS
+            if arr1[y][x+1] in RIVER_TILES:
+                if arr1[y][x] == LAKE_WATER:
+                    rivers[y - 1][x] = LAKE_SHALLOWS
 
     # Writes base layer
     print("Writing base layer...")
@@ -1053,10 +1242,29 @@ def make_tmx():
      </layer>"""
     outfile.write(footer)
 
-    # Makes and writes waves and plants layer
+    # Makes and writes rivers layer
+    print("Writing rivers layer...")
+    rivers_list = np.ndarray.tolist(rivers)
+    next_layer_txt = """<layer id="7" name="Rivers" width="{mapw}" height="{mapw}">
+      <data encoding="csv">""".format(mapw = str(MAP_SIZE))
+    outfile.write(next_layer_txt)
+    outfile.write("\n")
+    for i, y in enumerate(rivers_list):
+        new_row_str = str(y)
+        new_row_str = new_row_str.replace('[', '')
+        new_row_str = new_row_str.replace(']', '')
+        if i != MAP_SIZE - 1:
+            new_row_str = new_row_str + ","
+        outfile.write(new_row_str)
+        outfile.write("\n")
+    footer = """</data>
+     </layer>"""
+    outfile.write(footer)
+
+    # Makes and writes plants layer
     print("Writing plants layer...")
     plant_list = np.ndarray.tolist(plant_layer_vals)
-    next_layer_txt = """<layer id="7" name="Plants" width="{mapw}" height="{mapw}">
+    next_layer_txt = """<layer id="8" name="Plants" width="{mapw}" height="{mapw}">
       <data encoding="csv">""".format(mapw = str(MAP_SIZE))
     outfile.write(next_layer_txt)
     outfile.write("\n")
@@ -1072,10 +1280,10 @@ def make_tmx():
      </layer>"""
     outfile.write(footer)
 
-    # Makes and writes waves and plants layer
+    # Makes and writes tree layer
     print("Writing tree layer...")
     tree_list = np.ndarray.tolist(tree_layer_vals)
-    next_layer_txt = """<layer id="8" name="Trees" width="{mapw}" height="{mapw}">
+    next_layer_txt = """<layer id="9" name="Trees" width="{mapw}" height="{mapw}">
       <data encoding="csv">""".format(mapw = str(MAP_SIZE))
     outfile.write(next_layer_txt)
     outfile.write("\n")
