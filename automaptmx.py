@@ -7,8 +7,9 @@ import random
 vec = pg.math.Vector2
 from PIL import Image
 
-WIDTH = 800
-HEIGHT = 650
+WIDTH = 732
+HEIGHT = 800
+MAP_IMG_SIZE = 680
 FPS = 15
 # initialize pg and create window
 pg.mixer.pre_init(44100, -16, 1, 512) #reduces the delay in playing sounds
@@ -28,8 +29,9 @@ SWAMP_WATER = 220
 LAKE_SHALLOWS = 221
 LAKE_WATER = 222
 RIVER_TILES = [224, 223, 225, 226]
-RIVER_CHANCE = 5
+RIVER_CHANCE = 15 # Higher number lower chance.
 RIVER_DIRCHANCE = 10
+RIVER_ROCKS = [636, 637, 638]
 RIVER_ROCKS = [636, 637, 638, 639, 640]
 WAVE_TILES = [231, 232, 233,258, 260, 285, 286, 287]
 WAVE_CORNER_TILES = [237, 238, 480, 481]
@@ -90,7 +92,7 @@ RIVER_COLOR = [0, 0, 255]
 #print(newcolors)
 threshold = 0
 map_surface = pg.Surface((MAP_SIZE, MAP_SIZE)).convert()
-scale_map_surface = pg.Surface((500, 500)).convert()
+scale_map_surface = pg.Surface((MAP_IMG_SIZE, MAP_IMG_SIZE)).convert()
 world_noise = np.zeros((MAP_SIZE, MAP_SIZE))
 random_plant_noise = np.zeros((MAP_SIZE, MAP_SIZE))
 world = np.zeros((MAP_SIZE, MAP_SIZE))
@@ -100,6 +102,7 @@ deep_river_arr = np.zeros((MAP_SIZE, MAP_SIZE), int)
 swamps_arr = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used for storing regions that can be turned into swamps.
 ocean_regions = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used to tell oceans/seas from lakes to add waves to.
 beach_regions = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used to tell were the beaches are.
+desert_regions = np.zeros((MAP_SIZE, MAP_SIZE), int)
 rivers = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used for river layer.
 img = cv2.imread("mapmask1.png", 0)
 mask = img / 255.0
@@ -127,10 +130,13 @@ def return_flags(bitnum): # Used for returning the rotational flags of a tile so
     else:
         return 0x80000000 | 0x40000000 | 0x20000000
 
+def return_tile_id(tile):
+    tileID = tile & ~(0x80000000 | 0x40000000 | 0x20000000)  # clear the flags
+    return tileID
+
 def make_river(tbase, y, x, dr, count = 0):
     global rivers, world_noise, swamps_arr, river_edges, river_edges2
-    print(world_noise[y, x])
-    if (count < 900) and (tbase[y, x] > 5) and (swamps_arr[y, x] == 0):
+    if (count < 900) and (tbase[y, x] > 5) and not ((swamps_arr[y, x] == 1) and (tbase[y, x] <= 8)):
         upv = world_noise[y - 1, x]
         dnv = world_noise[y + 1, x]
         ltv = world_noise[y, x - 1]
@@ -166,25 +172,8 @@ def make_river(tbase, y, x, dr, count = 0):
                     y = yposlist[minpos]
                     if rivers[y, x] == 0:
                         rivers[y, x] = RIVER_TILES[minpos]
-        if minpos in [0, 1]:
-            if river_edges[y, x + 1] == 0:
-                river_edges[y, x + 1] = RIVER_ROCKS[3]
-            else:
-                river_edges2[y, x + 1] = RIVER_ROCKS[3]
-            if river_edges[y, x - 1] == 0:
-                river_edges[y, x - 1] = hflip(RIVER_ROCKS[3])
-            else:
-                river_edges2[y, x - 1] = hflip(RIVER_ROCKS[3])
-        if minpos in [2, 3]:
-            if river_edges[y + 1, x] == 0:
-                river_edges[y + 1, x] = dflip(RIVER_ROCKS[3])
-            else:
-                river_edges2[y + 1, x] = dflip(RIVER_ROCKS[3])
-            if river_edges[y - 1, x] == 0:
-                river_edges[y - 1, x] = vdflip(RIVER_ROCKS[3])
-            else:
-                river_edges2[y - 1, x] = vdflip(RIVER_ROCKS[3])
-
+                    else:
+                        return
         count += 1
         make_river(tbase, y, x, dr, count)
 
@@ -358,11 +347,14 @@ def new_map():
     update_map()
 
 def update_map():
-    global world_noise, scale_map_surface, world, mask, swamps_arr, MAX_SWAMP_SIZE, ocean_regions, beach_regions, rivers, deep_river_arr
+    global world_noise, scale_map_surface, world, mask, swamps_arr, MAX_SWAMP_SIZE, ocean_regions, beach_regions, rivers, deep_river_arr, desert_regions
     swamps_arr = np.zeros((MAP_SIZE, MAP_SIZE), int)  # Used for storing regions that can be turned into swamps.
     snow_arr = np.zeros((MAP_SIZE, MAP_SIZE), int)
     ocean_regions = np.zeros((MAP_SIZE, MAP_SIZE), int)  # Used to tell oceans/seas from lakes to add waves to.
     beach_regions = np.zeros((MAP_SIZE, MAP_SIZE), int)  # Used to tell were the beaches are.
+    desert_regions = np.zeros((MAP_SIZE, MAP_SIZE), int)
+    rivers = np.zeros((MAP_SIZE, MAP_SIZE), int)
+    deep_river_arr = np.zeros((MAP_SIZE, MAP_SIZE), int)
     print('Updating map...')
     # Combines mask image data with perlin noise
     world_noise = np.zeros_like(world)
@@ -423,11 +415,14 @@ def update_map():
                     break
                 cv2.floodFill(ocean_img, None, (y, x), shade)
 
-    # Finds ocean areas.
+    # Finds ocean areas and potential deserts/lakes.
+    pot_deserts = []
     for color in range(0, shade):
         ocean_arr = np.where(ocean_img == color, 1, 0)
         if np.count_nonzero(ocean_arr == 1) > MIN_OCEAN_SIZE:
             ocean_regions = np.add(ocean_regions, ocean_arr) # Finds the ocean tiles to add waves to
+        else:
+            pot_deserts.append(ocean_arr)
     ocean_regions = np.where(water_regions == 1, ocean_regions, 0) # Used for removing a bug introduced with floodFill. It removes all non water places from oceans.
     beach_arr = np.where(ocean_regions == 1, 255, 0)
     beach_img = beach_arr.astype('uint8')
@@ -442,6 +437,20 @@ def update_map():
     for swamp in swamps_list:
         swamps_arr = np.add(swamps_arr, swamp)
 
+    # Creates deserts
+    deserts_added = 0
+    while (deserts_added < deserts_slider.val) and (deserts_added < len(pot_deserts)):
+        for area in pot_deserts:
+            if deserts_added < deserts_slider.val:
+                if random.randrange(0, 2) == 1:
+                    desert_regions = np.add(desert_regions, area)
+                    deserts_added += 1
+    for i in range(MAP_SIZE):
+        for j in range(MAP_SIZE):
+            if desert_regions[i, j]:
+                world_noise[i, j] = 0.3
+
+
     # Creates rivers
     for i in range(MAP_SIZE):
         for j in range(MAP_SIZE):
@@ -449,16 +458,16 @@ def update_map():
                 count = [0, 0, 0, 0]
                 # Marks first tiles for river heads then creates rivers where they flow to the ocean or lakes.
                 if temp_array[i - 1][j] == (temp_array[i][j] - 1):
-                    if random.randrange(0, RIVER_CHANCE) == 1:
+                    if random.randrange(0, river_slider.val) == 1:
                         make_river(temp_array, i, j, 1)
                 if temp_array[i + 1][j] == (temp_array[i][j] - 1):
-                    if random.randrange(0, RIVER_CHANCE) == 1:
+                    if random.randrange(0, river_slider.val) == 1:
                         make_river(temp_array, i, j, 0)
                 if temp_array[i][j - 1] == (temp_array[i][j] - 1):
-                    if random.randrange(0, RIVER_CHANCE) == 1:
+                    if random.randrange(0, river_slider.val) == 1:
                         make_river(temp_array, i, j, 3)
                 if temp_array[i][j + 1] == (temp_array[i][j] - 1):
-                    if random.randrange(0, RIVER_CHANCE) == 1:
+                    if random.randrange(0, river_slider.val) == 1:
                         make_river(temp_array, i, j, 2)
 
     ocean_regions = np.where(water_regions == 1, ocean_regions, 0) # Used for removing a bug introduced with floodFill. It removes all non water places from oceans.
@@ -474,7 +483,7 @@ def update_map():
     pg.surfarray.blit_array(map_surface, new_continent)
     temp_surf = pg.transform.rotate(map_surface, -90)
     temp_surf2 = pg.transform.flip(temp_surf, True, False)
-    scale_map_surface = pg.transform.scale(temp_surf2, (500, 500))
+    scale_map_surface = pg.transform.scale(temp_surf2, (MAP_IMG_SIZE, MAP_IMG_SIZE))
     update_button.show()
     tmx_button.show()
     print("Done")
@@ -940,13 +949,21 @@ def make_tmx():
             # Scans map 4 blocks at a time to find the corner pattern.
             find_list = [arr1[y][x], arr1[y+1][x], arr1[y][x+1], arr1[y+1][x+1]] # Makes a list of 4 tile block values. Checks for basic corners.
             if (arr1[y][x] == 0) and (arr1[y][x+1] > 0) and (river_edges[y - 1][x - 1] == 0):
-                river_edges[y - 1][x - 1] = hflip(RIVER_ROCKS[3])
+                river_edges[y - 1][x - 1] = hflip(RIVER_ROCKS[1])
+                if return_tile_id(overlay2_layer_vals[y - 1][x - 1]) in [168, 114, 87, 189, 135, 108]: # Gets rid of sand overlays on rivers.
+                    overlay2_layer_vals[y - 1][x - 1] = 0
             if (arr1[y][x] > 0) and (arr1[y][x+1] == 0) and (river_edges[y - 1][x] == 0):
-                river_edges[y - 1][x] = RIVER_ROCKS[3]
+                river_edges[y - 1][x] = RIVER_ROCKS[1]
+                if return_tile_id(overlay2_layer_vals[y - 1][x]) in [168, 114, 87, 189, 135, 108]: # Gets rid of sand overlays on rivers.
+                    overlay2_layer_vals[y - 1][x] = 0
             if (arr1[y][x] == 0) and (arr1[y + 1][x] > 0) and (river_edges[y - 1][x - 1] == 0):
-                river_edges[y - 1][x - 1] = vdflip(RIVER_ROCKS[3])
+                river_edges[y - 1][x - 1] = vdflip(RIVER_ROCKS[1])
+                if return_tile_id(overlay2_layer_vals[y - 1][x - 1]) in [168, 114, 87, 189, 135, 108]: # Gets rid of sand overlays on rivers.
+                    overlay2_layer_vals[y - 1][x - 1] = 0
             if (arr1[y][x] > 0) and (arr1[y + 1][x] == 0) and (river_edges[y][x - 1] == 0):
-                river_edges[y][x - 1] = dflip(RIVER_ROCKS[3])
+                river_edges[y][x - 1] = dflip(RIVER_ROCKS[1])
+                if return_tile_id(overlay2_layer_vals[y][x - 1]) in [168, 114, 87, 189, 135, 108]: # Gets rid of sand overlays on rivers.
+                    overlay2_layer_vals[y][x - 1] = 0
 
             if 0 not in find_list:
                 if not all(element == find_list[0] for element in find_list): # Checks to see if all river elements are the same if not changes them into lake water.
@@ -955,32 +972,44 @@ def make_tmx():
                 if rivers[y - 1][x - 1] > 0:
                     rivers[y - 1][x - 1] = LAKE_SHALLOWS
                 elif 0 in [river_edges[y - 1][x - 1], river_edges2[y - 1][x - 1]]:
-                        river_edges[y - 1][x - 1] = hflip(RIVER_ROCKS[3])
-                        river_edges2[y - 1][x - 1] = vdflip(RIVER_ROCKS[3])
+                        river_edges[y - 1][x - 1] = hflip(RIVER_ROCKS[1])
+                        river_edges2[y - 1][x - 1] = vdflip(RIVER_ROCKS[1])
                 if rivers[y][x - 1] > 0:
                     rivers[y][x - 1] = LAKE_SHALLOWS
                 elif 0 in [river_edges[y][x - 1], river_edges2[y][x - 1]]:
-                    river_edges[y][x - 1] = hflip(RIVER_ROCKS[3])
-                    river_edges2[y][x - 1] = dflip(RIVER_ROCKS[3])
+                    river_edges[y][x - 1] = hflip(RIVER_ROCKS[1])
+                    river_edges2[y][x - 1] = dflip(RIVER_ROCKS[1])
                 if rivers[y - 1][x] > 0:
                     rivers[y - 1][x] = LAKE_SHALLOWS
                 elif 0 in [river_edges[y - 1][x], river_edges2[y - 1][x]]:
-                    river_edges[y - 1][x] = RIVER_ROCKS[3]
-                    river_edges2[y - 1][x] = vdflip(RIVER_ROCKS[3])
+                    river_edges[y - 1][x] = RIVER_ROCKS[1]
+                    river_edges2[y - 1][x] = vdflip(RIVER_ROCKS[1])
                 if rivers[y][x] > 0:
                     rivers[y][x] = LAKE_SHALLOWS
                 elif 0 in [river_edges[y][x], river_edges2[y][x]]:
-                    river_edges[y][x] = RIVER_ROCKS[3]
-                    river_edges2[y][x] = dflip(RIVER_ROCKS[3])
+                    river_edges[y][x] = RIVER_ROCKS[1]
+                    river_edges2[y][x] = dflip(RIVER_ROCKS[1])
             if find_list.count(0) == 3: # Adds river rock edges.
                 if rivers[y - 1][x - 1] > 0:
-                    river_edges[y][x] = RIVER_ROCKS[4]
+                    if river_edges[y][x] == 0:
+                        river_edges[y][x] = RIVER_ROCKS[2]
+                    else:
+                        river_edges2[y][x] = RIVER_ROCKS[2]
                 if rivers[y][x - 1] > 0:
-                    river_edges[y - 1][x] = vflip(RIVER_ROCKS[4])
+                    if river_edges[y - 1][x] == 0:
+                        river_edges[y - 1][x] = vflip(RIVER_ROCKS[2])
+                    else:
+                        river_edges2[y - 1][x] = vflip(RIVER_ROCKS[2])
                 if rivers[y - 1][x] > 0:
-                    river_edges[y][x - 1] = hflip(RIVER_ROCKS[4])
+                    if river_edges[y][x - 1] == 0:
+                        river_edges[y][x - 1] = hflip(RIVER_ROCKS[2])
+                    else:
+                        river_edges2[y][x - 1] = hflip(RIVER_ROCKS[2])
                 if rivers[y][x] > 0:
-                    river_edges[y - 1][x - 1] = hvflip(RIVER_ROCKS[4])
+                    if river_edges[y - 1][x - 1] == 0:
+                        river_edges[y - 1][x - 1] = hvflip(RIVER_ROCKS[2])
+                    else:
+                        river_edges2[y - 1][x - 1] = hvflip(RIVER_ROCKS[2])
 
 
     plant_layer_vals = np.zeros((MAP_SIZE, MAP_SIZE), int)
@@ -1082,7 +1111,7 @@ def make_tmx():
                         for plant, prob in SWAMPD_PLANTS.items():
                             if random.randrange(0, SPLANTD_FACT * prob) == 1:
                                 plant_layer_vals[y][x] = plant
-                elif (base_layer_vals[y][x] == 6) and (not beach_regions[y][x]):  # desert
+                elif (base_layer_vals[y][x] == 6) and (not beach_regions[y][x]) and desert_regions[y, x]:  # desert
                     if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
                         for plant, prob in DESERT_PLANTS.items():
                             if random.randrange(0, DPLANT_FACT*prob) == 1:
@@ -1099,18 +1128,14 @@ def make_tmx():
                             if random.randrange(0, pfact*prob) == 1:
                                 plant_layer_vals[y][x] = plant
 
-    # Puts river rocks under rivers.
-    rivers = np.where(deep_river_arr == 0, rivers, LAKE_WATER) # Creates deep water in ponds and lakes.
-    river_edges = np.where(rivers == 0, river_edges, RIVER_ROCKS[0])
-    overlay_layer_vals = np.where(river_edges == 0, overlay_layer_vals, river_edges)
-    overlay2_layer_vals = np.where(river_edges2 == 0, overlay2_layer_vals, river_edges2)
+    # Makes deep water areas in rivers
+    rivers = np.where(deep_river_arr == 0, rivers, LAKE_WATER) # Creates deep water in rivers, ponds and lakes.
 
     # Gets rid of flowing river edges along lakes, ponds and wide rivers
     arr1 = np.pad(rivers, pad_width=1, mode='constant', constant_values=0)
     # I know I screwed up and my x's and y's are switched in this loop.... But it works.
     for y in range(1, MAP_SIZE + 1):
         for x in range(1, MAP_SIZE + 1):
-            # Scans map 4 blocks at a time to find the corner pattern.
             if arr1[y][x] in RIVER_TILES:
                 if arr1[y+1][x] == LAKE_WATER:
                     rivers[y - 1][x - 1] = LAKE_SHALLOWS
@@ -1122,6 +1147,30 @@ def make_tmx():
             if arr1[y][x+1] in RIVER_TILES:
                 if arr1[y][x] == LAKE_WATER:
                     rivers[y - 1][x] = LAKE_SHALLOWS
+
+            try: # Puts edges in patches with water nothing then water
+                if arr1[y][x] and arr1[y][x + 2] and not arr1[y][x + 1]:
+                    river_edges[y - 1][x] = RIVER_ROCKS[1]
+                    river_edges2[y - 1][x] = hflip(RIVER_ROCKS[1])
+                if arr1[y][x] and arr1[y + 2][x] and not arr1[y + 1][x]:
+                    river_edges[y][x - 1] = dflip(RIVER_ROCKS[1])
+                    river_edges2[y][x - 1] = vdflip(RIVER_ROCKS[1])
+                # Fixes corners next to edges.
+                if arr1[y][x] and (return_tile_id(river_edges[y - 1][x]) == RIVER_ROCKS[2]):
+                    river_edges2[y - 1][x] = RIVER_ROCKS[1]
+                if arr1[y][x] and (return_tile_id(river_edges[y - 1][x - 2]) == RIVER_ROCKS[2]):
+                    river_edges2[y - 1][x - 2] = hflip(RIVER_ROCKS[1])
+                if arr1[y][x] and (return_tile_id(river_edges[y][x - 1]) == RIVER_ROCKS[2]):
+                    river_edges2[y][x - 1] = dflip(RIVER_ROCKS[1])
+                if arr1[y][x] and (return_tile_id(river_edges[y - 2][x - 1]) == RIVER_ROCKS[2]):
+                    river_edges2[y - 2][x - 1] = vdflip(RIVER_ROCKS[1])
+            except:
+                pass
+
+    overlay2_layer_vals = np.where(rivers == 0, overlay2_layer_vals, 0) # Gets rid of overlays on top of rivers.
+    river_edges = np.where(rivers == 0, river_edges, RIVER_ROCKS[0])
+    overlay_layer_vals = np.where(river_edges == 0, overlay_layer_vals, river_edges)
+    overlay2_layer_vals = np.where(river_edges2 == 0, overlay2_layer_vals, river_edges2)
 
     # Writes base layer
     print("Writing base layer...")
@@ -1314,7 +1363,9 @@ scale_slider = ravenui.Slider(ui, "Scale", (316, 10), 100, 200, 5, True)
 octaves_slider = ravenui.Slider(ui, "Octaves", (418, 10), 6, 10, 1)
 persistence_slider = ravenui.Slider(ui, "Persistence", (520, 10), 0.5, 1, 0.1, True)
 lacunarity_slider = ravenui.Slider(ui, "Lacunarity", (520, 10), 2.0, 4, 0.1, True)
-swamps_slider = ravenui.Slider(ui, "Max Swamps", (622, 10), 10, 100, 0)
+swamps_slider = ravenui.Slider(ui, "Max Swamps", (622, 10), 10, 50, 0)
+river_slider = ravenui.Slider(ui, "River Chance", (520, 62), RIVER_CHANCE, 30, 5)
+deserts_slider = ravenui.Slider(ui, "Max Deserts", (622, 62), 2, 20, 0)
 start_button = ravenui.Button(ui, "New Map", (10, 62), new_map, bg=(50, 200, 20))
 update_button = ravenui.Button(ui, "Update Map", (112, 62), update_map, bg=(50, 200, 20))
 update_button.hide()
@@ -1322,8 +1373,9 @@ noise_button = ravenui.Button(ui, "Perlin Noise", (214, 62), switch_noise, bg=(5
 tmx_button = ravenui.Button(ui, "Save TMX", (316, 62), make_tmx, bg=(50, 200, 20))
 tmx_button.hide()
 
+
 def draw():
-    screen.blit(scale_map_surface, (10, 130))
+    screen.blit(scale_map_surface, (10, 115))
     ui.draw()
 
 # Game loop
