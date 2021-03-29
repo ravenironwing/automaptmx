@@ -49,6 +49,7 @@ class Element():
     def __init__(self, ui):
         self.ui = ui
         self.screen = ui.screen
+        self.hidden = False
         ui.elements.append(self)
 
     def hide(self):
@@ -61,6 +62,7 @@ class Element():
         if self in self.ui.sliders:
             self.ui.sliders.remove(self)
             self.ui.hidden_sliders.append(self)
+        self.hidden = True
 
     def show(self):
         if self in self.ui.hidden_elements:
@@ -72,6 +74,7 @@ class Element():
         if self in self.ui.hidden_sliders:
             self.ui.hidden_sliders.remove(self)
             self.ui.sliders.append(self)
+        self.hidden = False
 
 class Button(Element):
     def __init__(self, ui, txt, pos, action, bg=WHITE, fg=BLACK, size=(100, 50), font_name="Segoe Print", font_size=16):
@@ -92,6 +95,7 @@ class Button(Element):
         self.rect = self.surface.get_rect(topleft=pos)
 
         self.call_back_ = action
+        self.hit = False
 
     def update_text(self, txt):
         self.txt = txt
@@ -113,7 +117,10 @@ class Button(Element):
     def check_click(self):
         pos = pygame.mouse.get_pos()
         if self.rect.collidepoint(pos):
+            self.hit = True
             self.call_back_()
+        else:
+            self.hit = False
 
 class Slider(Element):
     def __init__(self, ui, txt, pos, val, maxi, mini, float = False, font_name="Veranda", font_size=17):
@@ -186,21 +193,6 @@ class Slider(Element):
         if self.val > self.maxi:
             self.val = self.maxi
 
-    def hide(self):
-        if self in self.ui.elements:
-            self.ui.elements.remove(self)
-            self.ui.hidden_elements.append(self)
-        if self in self.ui.sliders:
-            self.ui.sliders.remove(self)
-            self.ui.hidden_sliders.append(self)
-
-    def show(self):
-        if self in self.ui.elements:
-            self.ui.elements.remove(self)
-            self.ui.hidden_elements.append(self)
-        if self in self.ui.sliders:
-            self.ui.sliders.remove(self)
-            self.ui.hidden_sliders.append(self)
 
 
 

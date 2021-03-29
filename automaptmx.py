@@ -7,7 +7,7 @@ import random
 vec = pg.math.Vector2
 from PIL import Image
 
-WIDTH = 732
+WIDTH = 834
 HEIGHT = 800
 MAP_IMG_SIZE = 680
 FPS = 15
@@ -73,8 +73,8 @@ MIN_OCEAN_SIZE = 1000 * 40 # Minimum area needed to add ocean water
 KINDSOFTILES = 18 #Ignoring the water tiles and swamp tiles
 ROUND_TILES = range(89, 133)
 ROUNDPOINT_TILES = range(155, 177)
-MASK_FACTOR = 0
-ELEVATION_FACTOR = 0
+DENS_FACTOR = 0
+OCEAN_FACTOR = 0.5
 SEALVL_FACTOR = 1
 
 BLACK = [0, 0, 0]
@@ -108,6 +108,7 @@ img = cv2.imread("mapmask1.png", 0)
 mask = img / 255.0
 
 noise_type = noise.pnoise2
+noise_type2 = noise.pnoise2
 scale = 100.0
 octaves = 6
 persistence = 0.5
@@ -282,7 +283,7 @@ def vdflip(tile):
     return tile
 
 def switch_noise():
-    global noise_type, noise_txt
+    global noise_type
     if noise_type == noise.snoise2:
         noise_type = noise.pnoise2
         noise_txt = "Perlin Noise"
@@ -290,6 +291,16 @@ def switch_noise():
         noise_type = noise.snoise2
         noise_txt = "Simplex Noise"
     noise_button.update_text(noise_txt)
+
+def switch_noise2():
+    global noise_type2
+    if noise_type2 == noise.snoise2:
+        noise_type2 = noise.pnoise2
+        noise_txt = "Perlin Noise"
+    elif noise_type2 == noise.pnoise2:
+        noise_type2 = noise.snoise2
+        noise_txt = "Simplex Noise"
+    mnoise_button.update_text(noise_txt)
 
 def add_color(world):
     global colors, KINDSOFTILES, swampcolors, swamps_arr
@@ -313,14 +324,83 @@ def add_color(world):
                 color_world[i][j] = RIVER_COLOR
     return color_world
 
+def make_random_mask():
+    global mask
+    print("Making random mask...")
+    random_mask = np.zeros((MAP_SIZE, MAP_SIZE), int)
+    random_mask_noise = np.zeros((MAP_SIZE, MAP_SIZE))
+    for i in range(MAP_SIZE):
+        for j in range(MAP_SIZE):
+            random_mask_noise[i][j] = noise_type2(i/mscale_slider.val,
+                                        j/mscale_slider.val,
+                                        octaves=moctaves_slider.val,
+                                        persistence=mpersistence_slider.val,
+                                        lacunarity=mlacunarity_slider.val,
+                                        repeatx=1024,
+                                        repeaty=1024,
+                                        base=0) + 0.5  # The 0.5 makes i return values between 0 and 1.
+    # Creates a random island cluster mask
+    random_img = np.where(random_mask_noise > scope_slider.val, 255, 0)
+    random_img = random_img.astype('uint8')
+    shade = 0
+    padding = padding_slider.val
+    for x in range(MAP_SIZE):
+        for y in range(MAP_SIZE):
+            if random_img[x, y] == 255:
+                shade += 1
+                if shade > 255:
+                    shade = 255
+                    break
+                cv2.floodFill(random_img, None, (y, x), shade)
+
+    islands_list = [] #Makes a list of randomly selectable islands
+    for color in range(0, shade):
+        rmask_arr = np.where(random_img == color, 255, 0)
+        if min_island_size_slider.val < np.count_nonzero(rmask_arr == 255) < max_island_size_slider.val:
+            add_island = True
+            for pad in range(0, padding): # Makes sure the island is not on the map edge.
+                if True in [rmask_arr.any(axis=1)[pad], rmask_arr.any(axis=1)[MAP_SIZE - pad - 1], rmask_arr.any(axis=0)[pad], rmask_arr.any(axis=0)[MAP_SIZE - pad - 1]]:
+                    add_island = False
+            if add_island:
+                islands_list.append(rmask_arr)
+
+    max_islands = max_islands_slider.val
+    if len(islands_list) < max_islands_slider.val:
+        max_islands = len(islands_list)
+    if max_islands == 0:
+        print("Error: No islands with selected mask settings. Alter settings and try again.")
+        return
+    for i in range(0, max_islands):
+        selected_isl = random.choice(range(0, len(islands_list)))
+        random_mask = np.add(random_mask, islands_list[selected_isl])
+        del islands_list[selected_isl]
+
+    random_img = random_mask.astype('float32')
+    #for i in range(blur_slider.val):
+    blur_img = cv2.GaussianBlur(random_img, (33, 33), 5, cv2.BORDER_CONSTANT)
+    blur_img2 = cv2.dilate(random_img, (11, 11), iterations=60)
+    blur_img2 = cv2.GaussianBlur(blur_img2, (253, 253), 33, cv2.BORDER_CONSTANT)
+
+    blur_img2 = blur_img2 * 4
+    random_img = np.add(blur_img, blur_img2)
+    # Sets max value to 255 effectively brightening the blured image.
+    random_img = np.where(random_img > 500, 500, random_img)
+    max_grad = np.amax(random_img)
+    random_img = random_img / max_grad
+    random_img = random_img * 255
+    cv2.imwrite("random_mask.png", random_img)
+    mask = random_img / 255.0
+    print("Map mask complete.")
+
 def new_map():
-    global scale_map_surface, world, mask, swamps_mask, random_plant_noise
-    "Building new map..."
+    global scale_map_surface, world, mask, swamps_mask, random_plant_noise, random_mask
+    start_button.hide()
+    print("Building new map...")
     # Noise settings
     # Creates a perlin noise array the size of the map.
     world = np.zeros((MAP_SIZE, MAP_SIZE))
-    rscale = random.randrange(40, 70)
     roct = random.randrange(4, 12)
+    rscale = random.randrange(40, 75)
     for i in range(MAP_SIZE):
         for j in range(MAP_SIZE):
             world[i][j] = noise_type(i/scale_slider.val,
@@ -339,6 +419,7 @@ def new_map():
                                         repeatx=1024,
                                         repeaty=1024,
                                         base=0) + 0.5  # The 0.5 makes i return values between 0 and 1.
+
     max_grad = np.amax(world)
     world = world / max_grad
     max_grad = np.amax(random_plant_noise)
@@ -360,14 +441,14 @@ def update_map():
     world_noise = np.zeros_like(world)
     for i in range(MAP_SIZE):
         for j in range(MAP_SIZE):
-            world_noise[i][j] = ((world[i][j]+elev_slider.val) * (mask[i][j]+mask_slider.val))
+            world_noise[i][j] = ((world[i][j]*(1-mask_slider.val)) + (mask[i][j]*mask_slider.val) - ocean_slider.val)
     # get it between 0 and 1
     max_grad = np.amax(world_noise)
     world_noise = world_noise / max_grad
     for i in range(MAP_SIZE):
         for j in range(MAP_SIZE):
-            if sealvl_slider.val != 1: #Changes sea level
-                world_noise[i][j] *= sealvl_slider.val
+            if elevation_slider.val != 1: #Changes elevation steepness.
+                world_noise[i][j] *= elevation_slider.val
     world_noise = np.where(world_noise < 0, 0, world_noise)  # Gets rid of negatives.
     world_noise = np.where(world_noise > 0.98, 0.98, world_noise)  # Gets rid of values above 1ish.
 
@@ -457,18 +538,21 @@ def update_map():
             if snow_arr[i][j] == 1:
                 count = [0, 0, 0, 0]
                 # Marks first tiles for river heads then creates rivers where they flow to the ocean or lakes.
-                if temp_array[i - 1][j] == (temp_array[i][j] - 1):
-                    if random.randrange(0, river_slider.val) == 1:
-                        make_river(temp_array, i, j, 1)
-                if temp_array[i + 1][j] == (temp_array[i][j] - 1):
-                    if random.randrange(0, river_slider.val) == 1:
-                        make_river(temp_array, i, j, 0)
-                if temp_array[i][j - 1] == (temp_array[i][j] - 1):
-                    if random.randrange(0, river_slider.val) == 1:
-                        make_river(temp_array, i, j, 3)
-                if temp_array[i][j + 1] == (temp_array[i][j] - 1):
-                    if random.randrange(0, river_slider.val) == 1:
-                        make_river(temp_array, i, j, 2)
+                try:
+                    if temp_array[i - 1][j] == (temp_array[i][j] - 1):
+                        if random.randrange(0, river_slider.val) == 1:
+                            make_river(temp_array, i, j, 1)
+                    if temp_array[i + 1][j] == (temp_array[i][j] - 1):
+                        if random.randrange(0, river_slider.val) == 1:
+                            make_river(temp_array, i, j, 0)
+                    if temp_array[i][j - 1] == (temp_array[i][j] - 1):
+                        if random.randrange(0, river_slider.val) == 1:
+                            make_river(temp_array, i, j, 3)
+                    if temp_array[i][j + 1] == (temp_array[i][j] - 1):
+                        if random.randrange(0, river_slider.val) == 1:
+                            make_river(temp_array, i, j, 2)
+                except:
+                    pass
 
     ocean_regions = np.where(water_regions == 1, ocean_regions, 0) # Used for removing a bug introduced with floodFill. It removes all non water places from oceans.
     deep_river_arr = np.where(rivers > 0, 255, 0)
@@ -484,9 +568,8 @@ def update_map():
     temp_surf = pg.transform.rotate(map_surface, -90)
     temp_surf2 = pg.transform.flip(temp_surf, True, False)
     scale_map_surface = pg.transform.scale(temp_surf2, (MAP_IMG_SIZE, MAP_IMG_SIZE))
-    update_button.show()
-    tmx_button.show()
     print("Done")
+    tmx_button.show()
 
 # Creates TMX file based off of noise+mask
 def make_tmx():
@@ -1020,7 +1103,7 @@ def make_tmx():
         for x in range(0, MAP_SIZE):
             if rivers[y][x] == 0:
                 if (ocean_regions[y][x] == 0) and (y < MAP_SIZE - TREE_DIMENTIONS) and (x < MAP_SIZE - TREE_DIMENTIONS): # Keeps it for going out of range.
-                    if random.randrange(0, 10): # Only does tree checks every 10th tile on average.
+                    if random.randrange(0, 10) and random_plant_noise[y][x]: # Only does tree checks every 10th tile on average.
                         tree_scope = [tree_layer_vals[y][x], tree_layer_vals[y][x+1], tree_layer_vals[y][x+2], tree_layer_vals[y][x+3], tree_layer_vals[y][x+4], tree_layer_vals[y][x+5], tree_layer_vals[y][x+6],
                                       tree_layer_vals[y+1][x], tree_layer_vals[y+1][x+1], tree_layer_vals[y+1][x+2], tree_layer_vals[y+1][x+3], tree_layer_vals[y+1][x+4], tree_layer_vals[y+1][x+5], tree_layer_vals[y+1][x+6],
                                       tree_layer_vals[y +2][x], tree_layer_vals[y +2][x+1], tree_layer_vals[y +2][x+2], tree_layer_vals[y +2][x+3], tree_layer_vals[y +2][x+4], tree_layer_vals[y +2][x+5], tree_layer_vals[y +2][x+6],
@@ -1062,6 +1145,8 @@ def make_tmx():
                                 prob = PINE_PROB * 4
                         else:
                             place_tree = False
+                        if place_tree:
+                            prob = int(prob / plant_slider.val)
                         if place_tree and (random.randrange(0, prob * 10) == 1):
                             for tile in tree_scope:
                                 if tile in ALL_TREE_TILES: # checks to see if there are already tree tiles before placing a tree.
@@ -1079,6 +1164,7 @@ def make_tmx():
                 if base_layer_vals[y][x] == 8: # If grassland.
                     if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
                         for plant, prob in GRASSLAND_PLANTS.items():
+                            prob = int(prob / plant_slider.val)
                             if random.randrange(0, GPLANT_FACT*prob) == 1:
                                 plant_layer_vals[y][x] = plant
                 elif (water_layer_vals[y][x] == WATER_TILE) and (ocean_regions[y][x]): # If ocean.
@@ -1094,37 +1180,44 @@ def make_tmx():
                         else:
                             continue
                         for plant, prob in OCEAN_PLANTS.items():
+                            prob = int(prob / plant_slider.val)
                             if random.randrange(0, pfact*prob) == 1:
                                 corners_layer_vals[y][x] = plant # Puts them under the water.
                 elif base_layer_vals[y][x] == 10:  # Forest
                     if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
                         for plant, prob in FOREST_PLANTS.items():
+                            prob = int(prob / plant_slider.val)
                             if random.randrange(0, FPLANT_FACT*prob) == 1:
                                 plant_layer_vals[y][x] = plant
                 elif water_layer_vals[y][x] in [SWAMP_SHALLOWS]:  # Swamp water
                     if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
                         for plant, prob in SWAMPW_PLANTS.items():
+                            prob = int(prob / plant_slider.val)
                             if random.randrange(0, SPLANTW_FACT*prob) == 1:
                                 plant_layer_vals[y][x] = plant
                 elif base_layer_vals[y][x] in [26, 27]:  # swamp (not in water)
                     if corners_layer_vals[y][x] == 0:
                         for plant, prob in SWAMPD_PLANTS.items():
+                            prob = int(prob / plant_slider.val)
                             if random.randrange(0, SPLANTD_FACT * prob) == 1:
                                 plant_layer_vals[y][x] = plant
                 elif (base_layer_vals[y][x] == 6) and (not beach_regions[y][x]) and desert_regions[y, x]:  # desert
                     if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
                         for plant, prob in DESERT_PLANTS.items():
+                            prob = int(prob / plant_slider.val)
                             if random.randrange(0, DPLANT_FACT*prob) == 1:
                                 plant_layer_vals[y][x] = plant
                 elif (base_layer_vals[y][x] == 7) and (not beach_regions[y][x]):  # dirt not near beaches
                     if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
                         for plant, prob in WASTELAND_PLANTS.items():
+                            prob = int(prob / plant_slider.val)
                             if random.randrange(0, WPLANT_FACT*prob) == 1:
                                 plant_layer_vals[y][x] = plant
                 elif 10 < base_layer_vals[y][x] < 17: # If mountains
                     if (corners_layer_vals[y][x] == 0) and random_plant_noise[y][x]:
                         pfact = (base_layer_vals[y][x] - 10) * MPLANT_FACT
                         for plant, prob in MOUNTAIN_PLANTS.items():
+                            prob = int(prob / plant_slider.val)
                             if random.randrange(0, pfact*prob) == 1:
                                 plant_layer_vals[y][x] = plant
 
@@ -1356,23 +1449,36 @@ def make_tmx():
 
 # UI elements
 ui = ravenui.UI(screen)
-mask_slider = ravenui.Slider(ui, "Ocean Depth", (10, 10), MASK_FACTOR, 0.4, 0, True)
-elev_slider = ravenui.Slider(ui, "Land Density", (112, 10), ELEVATION_FACTOR, 0.5, -0.9, True)
-sealvl_slider = ravenui.Slider(ui, "Elevation", (214, 10), SEALVL_FACTOR, 1.3, 0.0001, True)
-scale_slider = ravenui.Slider(ui, "Scale", (316, 10), 100, 200, 5, True)
-octaves_slider = ravenui.Slider(ui, "Octaves", (418, 10), 6, 10, 1)
-persistence_slider = ravenui.Slider(ui, "Persistence", (520, 10), 0.5, 1, 0.1, True)
-lacunarity_slider = ravenui.Slider(ui, "Lacunarity", (520, 10), 2.0, 4, 0.1, True)
-swamps_slider = ravenui.Slider(ui, "Max Swamps", (622, 10), 10, 50, 0)
-river_slider = ravenui.Slider(ui, "River Chance", (520, 62), RIVER_CHANCE, 30, 5)
-deserts_slider = ravenui.Slider(ui, "Max Deserts", (622, 62), 2, 20, 0)
+mask_slider = ravenui.Slider(ui, "Mask Intensity", (10, 10), 0.5, 1, 0, True)
+ocean_slider = ravenui.Slider(ui, "Ocean Depth", (112, 10), OCEAN_FACTOR, 0.99, -1, True)
+elevation_slider = ravenui.Slider(ui, "Max Elevation", (214, 10), SEALVL_FACTOR, 1.3, 0.0001, True)
+swamps_slider = ravenui.Slider(ui, "Max Swamps", (316, 10), 10, 50, 0)
+deserts_slider = ravenui.Slider(ui, "Max Deserts", (418, 10), 2, 20, 0)
+river_slider = ravenui.Slider(ui, "River Sparsity", (520, 10), RIVER_CHANCE, 40, 5)
+plant_slider = ravenui.Slider(ui, "Plant Density.", (622, 10), 1, 10, 0.1)
 start_button = ravenui.Button(ui, "New Map", (10, 62), new_map, bg=(50, 200, 20))
-update_button = ravenui.Button(ui, "Update Map", (112, 62), update_map, bg=(50, 200, 20))
+update_button = ravenui.Button(ui, "Update Map", (10, 62), update_map, bg=(50, 200, 20))
 update_button.hide()
-noise_button = ravenui.Button(ui, "Perlin Noise", (214, 62), switch_noise, bg=(50, 200, 20))
-tmx_button = ravenui.Button(ui, "Save TMX", (316, 62), make_tmx, bg=(50, 200, 20))
+tmx_button = ravenui.Button(ui, "Save TMX", (112, 62), make_tmx, bg=(50, 200, 20))
 tmx_button.hide()
+noise_button = ravenui.Button(ui, "Perlin Noise", (214, 62), switch_noise, bg=(50, 200, 20))
+scale_slider = ravenui.Slider(ui, "Scale", (316, 62), 100, 200, 5, True)
+octaves_slider = ravenui.Slider(ui, "Octaves", (418, 62), 6, 10, 1)
+persistence_slider = ravenui.Slider(ui, "Persistence", (520, 62), 0.5, 1, 0.1, True)
+lacunarity_slider = ravenui.Slider(ui, "Lacunarity", (622, 62), 2.0, 4, 0.1, True)
 
+random_mask_button = ravenui.Button(ui, "New Mask", (724, 114), make_random_mask, bg=(50, 200, 20))
+mnoise_button = ravenui.Button(ui, "Perlin Noise", (724, 166), switch_noise2, bg=(50, 200, 20))
+mscale_slider = ravenui.Slider(ui, "Scale", (724, 218), 100, 400, 5, True)
+moctaves_slider = ravenui.Slider(ui, "Octaves", (724, 270), 6, 10, 1)
+mpersistence_slider = ravenui.Slider(ui, "Persistence", (724, 322), 0.5, 1, 0.1, True)
+mlacunarity_slider = ravenui.Slider(ui, "Lacunarity", (724, 374), 2.0, 4, 0.1, True)
+padding_slider = ravenui.Slider(ui, "Padding", (724, 422), 50, int(MAP_SIZE/5), 10)
+blur_slider = ravenui.Slider(ui, "Blur Amount", (724, 474), 100, 200, 90)
+min_island_size_slider = ravenui.Slider(ui, "Min Isize", (724, 526), 500, 10000, 20)
+max_island_size_slider = ravenui.Slider(ui, "Max Isize", (724, 578), MAP_SIZE * 50, int(MAP_SIZE * MAP_SIZE * 0.8), 10000)
+max_islands_slider = ravenui.Slider(ui, "Max #Islands", (724, 630), 10, 100, 1)
+scope_slider = ravenui.Slider(ui, "Noise Depth", (724, 682), 0.6, 0.9, 0.1, True)
 
 def draw():
     screen.blit(scale_map_surface, (10, 115))
@@ -1392,6 +1498,12 @@ while running:
             ui.events(event.type)
     # Update
     ui.update()
+    if start_button.hidden:
+        update_button.show()
+    if True in [scale_slider.hit, persistence_slider.hit, lacunarity_slider.hit, octaves_slider.hit, noise_button.hit]:
+        update_button.hide()
+        start_button.show()
+        tmx_button.hide()
 
     # Draw / render
     screen.fill(BLACK)
