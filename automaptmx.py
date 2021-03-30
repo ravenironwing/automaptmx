@@ -326,7 +326,7 @@ def add_color(world):
     return color_world
 
 def make_random_mask():
-    global mask
+    global mask, map_surface, scale_map_surface
     print("Making random mask...")
     random_mask = np.zeros((MAP_SIZE, MAP_SIZE), int)
     random_mask_noise = np.zeros((MAP_SIZE, MAP_SIZE))
@@ -390,9 +390,19 @@ def make_random_mask():
     kernel = cv2.getGaussianKernel(55, 15, cv2.CV_32F)
     random_img = new_img.astype('float32')
     random_img = cv2.sepFilter2D(random_img, cv2.CV_32F, kernel, kernel)
-    cv2.imwrite("random_mask.png", random_img)
     mask = random_img / 255.0
+
+    #Displays mask on screen.
+    size = random_img.shape[1::-1]
+    random_img= np.repeat(random_img.reshape(size[1], size[0], 1), 3, axis = 2)
+    new_mask = np.uint8(random_img)
+    pg.surfarray.blit_array(map_surface, new_mask)
+    temp_surf = pg.transform.rotate(map_surface, -90)
+    temp_surf2 = pg.transform.flip(temp_surf, True, False)
+    scale_map_surface = pg.transform.scale(temp_surf2, (MAP_IMG_SIZE, MAP_IMG_SIZE))
+    cv2.imwrite("random_mask.png", random_img)
     print("Map mask complete.")
+    draw()
 
 def new_map():
     global scale_map_surface, world, mask, swamps_mask, random_plant_noise, random_mask
@@ -1501,7 +1511,7 @@ while running:
     ui.update()
     if start_button.hidden:
         update_button.show()
-    if True in [scale_slider.hit, persistence_slider.hit, lacunarity_slider.hit, octaves_slider.hit, noise_button.hit]:
+    if True in [scale_slider.hit, persistence_slider.hit, lacunarity_slider.hit, octaves_slider.hit, noise_button.hit, random_mask_button.hit]:
         update_button.hide()
         start_button.show()
         tmx_button.hide()
