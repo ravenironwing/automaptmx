@@ -4,12 +4,13 @@ import numpy as np
 import pygame as pg
 import noise, cv2 # pip3 install opencv-python
 import random
+import math
 vec = pg.math.Vector2
 from PIL import Image
 
-WIDTH = 834
-HEIGHT = 800
-MAP_IMG_SIZE = 680
+WIDTH = 732
+HEIGHT = 730
+MAP_IMG_SIZE = 608
 FPS = 15
 # initialize pg and create window
 pg.mixer.pre_init(44100, -16, 1, 512) #reduces the delay in playing sounds
@@ -354,7 +355,7 @@ def make_random_mask():
                 cv2.floodFill(random_img, None, (y, x), shade)
 
     islands_list = [] #Makes a list of randomly selectable islands
-    for color in range(0, shade):
+    for color in range(0, shade + 1):
         rmask_arr = np.where(random_img == color, 255, 0)
         if min_island_size_slider.val < np.count_nonzero(rmask_arr == 255) < max_island_size_slider.val:
             add_island = True
@@ -375,19 +376,20 @@ def make_random_mask():
         random_mask = np.add(random_mask, islands_list[selected_isl])
         del islands_list[selected_isl]
 
-    random_img = random_mask.astype('float32')
-    #for i in range(blur_slider.val):
-    blur_img = cv2.GaussianBlur(random_img, (33, 33), 5, cv2.BORDER_CONSTANT)
-    blur_img2 = cv2.dilate(random_img, (11, 11), iterations=60)
-    blur_img2 = cv2.GaussianBlur(blur_img2, (253, 253), 33, cv2.BORDER_CONSTANT)
-
-    blur_img2 = blur_img2 * 4
-    random_img = np.add(blur_img, blur_img2)
-    # Sets max value to 255 effectively brightening the blured image.
-    random_img = np.where(random_img > 500, 500, random_img)
-    max_grad = np.amax(random_img)
-    random_img = random_img / max_grad
-    random_img = random_img * 255
+    random_img = random_mask.astype('uint8')
+    kernel = np.ones((3, 3), np.uint8)
+    new_img = random_img
+    blur_img = cv2.GaussianBlur(random_img, (335, 335), 33, cv2.BORDER_CONSTANT)
+    for i, color in enumerate(range(254, 0, -6)):
+        fact = math.ceil(i * i/10)
+        dilate_img = random_img.astype('uint8')
+        dilate_img = cv2.dilate(dilate_img, kernel, iterations=fact)
+        dilate_img = np.where(dilate_img > 0, color, 0)
+        new_img = np.where(new_img == 0, dilate_img, new_img)
+    new_img = np.where(blur_img == 0, 0, new_img) #gets rid of squarness before final blur.
+    kernel = cv2.getGaussianKernel(55, 15, cv2.CV_32F)
+    random_img = new_img.astype('float32')
+    random_img = cv2.sepFilter2D(random_img, cv2.CV_32F, kernel, kernel)
     cv2.imwrite("random_mask.png", random_img)
     mask = random_img / 255.0
     print("Map mask complete.")
@@ -481,7 +483,7 @@ def update_map():
                     break
                 cv2.floodFill(grass_img, None, (y, x), shade)
     swamps_list = []
-    for color in range(0, shade):
+    for color in range(0, shade + 1):
         swamp_arr = np.where(grass_img == color, 1, 0)
         if np.count_nonzero(swamp_arr == 1) < MAX_SWAMP_SIZE:
             swamps_list.append(swamp_arr)
@@ -498,7 +500,7 @@ def update_map():
 
     # Finds ocean areas and potential deserts/lakes.
     pot_deserts = []
-    for color in range(0, shade):
+    for color in range(0, shade + 1):
         ocean_arr = np.where(ocean_img == color, 1, 0)
         if np.count_nonzero(ocean_arr == 1) > MIN_OCEAN_SIZE:
             ocean_regions = np.add(ocean_regions, ocean_arr) # Finds the ocean tiles to add waves to
@@ -1467,18 +1469,17 @@ octaves_slider = ravenui.Slider(ui, "Octaves", (418, 62), 6, 10, 1)
 persistence_slider = ravenui.Slider(ui, "Persistence", (520, 62), 0.5, 1, 0.1, True)
 lacunarity_slider = ravenui.Slider(ui, "Lacunarity", (622, 62), 2.0, 4, 0.1, True)
 
-random_mask_button = ravenui.Button(ui, "New Mask", (724, 114), make_random_mask, bg=(50, 200, 20))
-mnoise_button = ravenui.Button(ui, "Perlin Noise", (724, 166), switch_noise2, bg=(50, 200, 20))
-mscale_slider = ravenui.Slider(ui, "Scale", (724, 218), 100, 400, 5, True)
-moctaves_slider = ravenui.Slider(ui, "Octaves", (724, 270), 6, 10, 1)
-mpersistence_slider = ravenui.Slider(ui, "Persistence", (724, 322), 0.5, 1, 0.1, True)
-mlacunarity_slider = ravenui.Slider(ui, "Lacunarity", (724, 374), 2.0, 4, 0.1, True)
-padding_slider = ravenui.Slider(ui, "Padding", (724, 422), 50, int(MAP_SIZE/5), 10)
-blur_slider = ravenui.Slider(ui, "Blur Amount", (724, 474), 100, 200, 90)
-min_island_size_slider = ravenui.Slider(ui, "Min Isize", (724, 526), 500, 10000, 20)
-max_island_size_slider = ravenui.Slider(ui, "Max Isize", (724, 578), MAP_SIZE * 50, int(MAP_SIZE * MAP_SIZE * 0.8), 10000)
-max_islands_slider = ravenui.Slider(ui, "Max #Islands", (724, 630), 10, 100, 1)
-scope_slider = ravenui.Slider(ui, "Noise Depth", (724, 682), 0.6, 0.9, 0.1, True)
+random_mask_button = ravenui.Button(ui, "New Mask", (622, 114), make_random_mask, bg=(50, 200, 20))
+mnoise_button = ravenui.Button(ui, "Perlin Noise", (622, 166), switch_noise2, bg=(50, 200, 20))
+mscale_slider = ravenui.Slider(ui, "Scale", (622, 218), 100, 400, 5, True)
+moctaves_slider = ravenui.Slider(ui, "Octaves", (622, 270), 6, 10, 1)
+mpersistence_slider = ravenui.Slider(ui, "Persistence", (622, 322), 0.5, 1, 0.1, True)
+mlacunarity_slider = ravenui.Slider(ui, "Lacunarity", (622, 374), 2.0, 4, 0.1, True)
+padding_slider = ravenui.Slider(ui, "Padding", (622, 422), 75, int(MAP_SIZE/5), 10)
+max_islands_slider = ravenui.Slider(ui, "Max #Islands", (622, 474), 10, 100, 1)
+min_island_size_slider = ravenui.Slider(ui, "Min Isize", (622, 526), 500, 10000, 20)
+max_island_size_slider = ravenui.Slider(ui, "Max Isize", (622, 578), MAP_SIZE * 50, int(MAP_SIZE * MAP_SIZE * 0.8), 10000)
+scope_slider = ravenui.Slider(ui, "Noise Depth", (622, 630), 0.6, 0.9, 0.1, True)
 
 def draw():
     screen.blit(scale_map_surface, (10, 115))
