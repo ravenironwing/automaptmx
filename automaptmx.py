@@ -83,6 +83,23 @@ colors = [[93, 120, 150], [108, 135, 168], [147, 174, 171], [165, 195, 228], [18
 swampcolors = [[0, 105, 150], [0, 125, 130], [0, 145, 110], [0, 160, 100], [0, 165, 75], [0, 170, 55], [0, 180, 55], [0, 190, 55], [0, 205, 50], [0, 205, 50], [0, 205, 50], [0, 205, 50], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
 RIVER_COLOR = [0, 0, 255]
 
+def blur_mask(mask):
+    temp_img = mask.astype('uint8')
+    kernel = np.ones((3, 3), np.uint8)
+    new_img = temp_img
+    blur_img = cv2.GaussianBlur(temp_img, (335, 335), 33, cv2.BORDER_CONSTANT)
+    for i, color in enumerate(range(254, 0, -6)):
+        fact = math.ceil(i * i/10)
+        dilate_img = temp_img.astype('uint8')
+        dilate_img = cv2.dilate(dilate_img, kernel, iterations=fact)
+        dilate_img = np.where(dilate_img > 0, color, 0)
+        new_img = np.where(new_img == 0, dilate_img, new_img)
+    new_img = np.where(blur_img == 0, 0, new_img) #gets rid of squarness before final blur.
+    kernel = cv2.getGaussianKernel(55, 15, cv2.CV_32F)
+    temp_img = new_img.astype('float32')
+    temp_img = cv2.sepFilter2D(temp_img, cv2.CV_32F, kernel, kernel)
+    return temp_img
+
 #newcolors = []
 #for color in colors:
 #    newcolor = []
@@ -106,6 +123,7 @@ beach_regions = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used to tell were the beac
 desert_regions = np.zeros((MAP_SIZE, MAP_SIZE), int)
 rivers = np.zeros((MAP_SIZE, MAP_SIZE), int) # Used for river layer.
 img = cv2.imread("mapmask1.png", 0)
+img = blur_mask(img)
 mask = img / 255.0
 
 noise_type = noise.pnoise2
@@ -376,23 +394,8 @@ def make_random_mask():
         random_mask = np.add(random_mask, islands_list[selected_isl])
         del islands_list[selected_isl]
 
-    random_img = random_mask.astype('uint8')
-    kernel = np.ones((3, 3), np.uint8)
-    new_img = random_img
-    blur_img = cv2.GaussianBlur(random_img, (335, 335), 33, cv2.BORDER_CONSTANT)
-    for i, color in enumerate(range(254, 0, -6)):
-        fact = math.ceil(i * i/10)
-        dilate_img = random_img.astype('uint8')
-        dilate_img = cv2.dilate(dilate_img, kernel, iterations=fact)
-        dilate_img = np.where(dilate_img > 0, color, 0)
-        new_img = np.where(new_img == 0, dilate_img, new_img)
-    new_img = np.where(blur_img == 0, 0, new_img) #gets rid of squarness before final blur.
-    kernel = cv2.getGaussianKernel(55, 15, cv2.CV_32F)
-    random_img = new_img.astype('float32')
-    random_img = cv2.sepFilter2D(random_img, cv2.CV_32F, kernel, kernel)
-    mask = random_img / 255.0
-
     #Displays mask on screen.
+    random_img = random_mask.astype('uint8')
     size = random_img.shape[1::-1]
     random_img= np.repeat(random_img.reshape(size[1], size[0], 1), 3, axis = 2)
     new_mask = np.uint8(random_img)
@@ -403,6 +406,9 @@ def make_random_mask():
     cv2.imwrite("random_mask.png", random_img)
     print("Map mask complete.")
     draw()
+
+    random_img = blur_mask(random_mask)
+    mask = random_img / 255.0
 
 def new_map():
     global scale_map_surface, world, mask, swamps_mask, random_plant_noise, random_mask
