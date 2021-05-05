@@ -82,6 +82,8 @@ BLACK = [0, 0, 0]
 colors = [[93, 120, 150], [108, 135, 168], [147, 174, 171], [165, 195, 228], [189, 219, 219], [261, 231, 174], [152, 118, 84], [102, 159, 69], [75, 141, 33], [102, 66, 45], [120, 105, 72], [123, 108, 84], [144, 144, 144], [168, 168, 168], [183, 183, 183], [225, 225, 243], [255, 255, 255], [240, 250, 255]]
 swampcolors = [[0, 105, 150], [0, 125, 130], [0, 145, 110], [0, 160, 100], [0, 165, 75], [0, 170, 55], [0, 180, 55], [0, 190, 55], [0, 205, 50], [0, 205, 50], [0, 205, 50], [0, 205, 50], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
 RIVER_COLOR = [0, 0, 255]
+tundra_colors = [[93, 120, 150], [108, 135, 168], [147, 174, 171], [165, 195, 228], [189, 219, 219], [261, 231, 254], [252, 118, 204], [182, 225, 229], [202, 255, 249], [102, 66, 45], [120, 105, 72], [123, 108, 84], [144, 144, 144], [168, 168, 168], [183, 183, 183], [225, 225, 243], [255, 255, 255], [240, 250, 255]]
+tundra_swampcolors = [[0, 105, 255], [0, 125, 255], [0, 145, 255], [0, 160, 255], [0, 165, 255], [0, 170, 255], [0, 180, 255], [0, 190, 255], [0, 205, 255], [0, 205, 255], [0, 205, 255], [0, 205, 255], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
 
 def blur_mask(mask):
     temp_img = mask.astype('uint8')
@@ -132,6 +134,7 @@ scale = 100.0
 octaves = 6
 persistence = 0.5
 lacunarity = 2.0
+biome_type = 'Tropics'
 
 def return_flags(bitnum): # Used for returning the rotational flags of a tile so it can be replaced by one of the same rotation.
     tileid = bitnum & ~(0x80000000 | 0x40000000 | 0x20000000)
@@ -301,6 +304,14 @@ def vdflip(tile):
     tile = dflip(vflip(tile))
     return tile
 
+def toggle_biome():
+    global biome_type
+    if biome_type == "Tundra":
+        biome_type = 'Tropics'
+    else:
+        biome_type = "Tundra"
+    biome_button.update_text(biome_type)
+
 def switch_noise():
     global noise_type
     if noise_type == noise.snoise2:
@@ -322,23 +333,29 @@ def switch_noise2():
     mnoise_button.update_text(noise_txt)
 
 def add_color(world):
-    global colors, KINDSOFTILES, swampcolors, swamps_arr
+    global colors, KINDSOFTILES, swampcolors, swamps_arr, tundra_colors, tundra_swampcolors, biome_type
     color_world = np.zeros(world.shape+(3,))
+    if biome_type == "Tundra":
+        color_list = tundra_colors
+        scolor_list = tundra_swampcolors
+    else:
+        color_list = colors
+        scolor_list = swampcolors
 
     for i in range(MAP_SIZE):
         for j in range(MAP_SIZE):
             for t in range(KINDSOFTILES):
                 if t == KINDSOFTILES-1:
                     if world[i][j] < threshold + 1:
-                        color_world[i][j] = colors[t]
+                        color_world[i][j] = color_list[t]
                 elif world[i][j] < threshold + (t+1)/KINDSOFTILES:
                     if swamps_arr[i][j] == 1:
-                        color_world[i][j] = swampcolors[t]
+                        color_world[i][j] = scolor_list[t]
                     else:
-                        color_world[i][j] = colors[t]
+                        color_world[i][j] = color_list[t]
                     break
                 elif world[i][j] >= threshold + 1:
-                    color_world[i][j] = colors[KINDSOFTILES-1]
+                    color_world[i][j] = color_list[KINDSOFTILES-1]
             if rivers[i][j]:
                 color_world[i][j] = RIVER_COLOR
     return color_world
@@ -591,7 +608,7 @@ def update_map():
 
 # Creates TMX file based off of noise+mask
 def make_tmx():
-    global world_noise, random_plant_noise, rivers, river_edges, deep_river_arr
+    global world_noise, random_plant_noise, rivers, river_edges, deep_river_arr, biome_type
     print("Saving tmx file...")
     # The wave_base_arr is used to create an underbase for wave placement that doesn't include all the noise. For smoother wave patterns.
     temp_array = np.array(world_noise)
@@ -1282,19 +1299,22 @@ def make_tmx():
     river_edges = np.where(rivers == 0, river_edges, RIVER_ROCKS[0])
     overlay_layer_vals = np.where(river_edges == 0, overlay_layer_vals, river_edges)
     overlay2_layer_vals = np.where(river_edges2 == 0, overlay2_layer_vals, river_edges2)
-
+    if biome_type == 'Tundra':
+        tile_set = 'tundratiles.png'
+    else:
+        tile_set = 'tropicstiles.png'
     # Writes base layer
     print("Writing base layer...")
     outfile = open("newautomap.tmx", "w")
     header = """<?xml version="1.0" encoding="UTF-8"?>
     <map version="1.4" tiledversion="1.4.1" orientation="orthogonal" renderorder="right-down" width="{mapw}" height="{mapw}" tilewidth="32" tileheight="32" infinite="0" nextlayerid="2" nextobjectid="1">
      <tileset firstgid="1" name="automaptiles" tilewidth="32" tileheight="32" tilecount="{tile_count}" columns="{tileset_columns}">
-      <image source="automaptiles.png" width="448" height="32"/>
+      <image source="{tilesheet}" width="448" height="32"/>
         <tile id="{watertile}">
           </tile>
      </tileset>
      <layer id="1" name="Base Layer" width="{mapw}" height="{mapw}">
-      <data encoding="csv">""".format(mapw = str(MAP_SIZE), watertile = str(LAKE_WATER), tile_count = str(TILE_COUNT), tileset_columns = str(TILESET_COLUMNS))
+      <data encoding="csv">""".format(mapw = str(MAP_SIZE), watertile = str(LAKE_WATER), tile_count = str(TILE_COUNT), tileset_columns = str(TILESET_COLUMNS), tilesheet = tile_set)
     outfile.write(header)
     outfile.write("\n")
     for i, row in enumerate(base_layer_vals):
@@ -1496,6 +1516,7 @@ max_islands_slider = ravenui.Slider(ui, "Max #Islands", (622, 474), 10, 100, 1)
 min_island_size_slider = ravenui.Slider(ui, "Min Isize", (622, 526), 500, 10000, 20)
 max_island_size_slider = ravenui.Slider(ui, "Max Isize", (622, 578), MAP_SIZE * 50, int(MAP_SIZE * MAP_SIZE * 0.8), 10000)
 scope_slider = ravenui.Slider(ui, "Noise Depth", (622, 630), 0.6, 0.9, 0.1, True)
+biome_button = ravenui.Button(ui, "Tropics", (622, 682), toggle_biome, bg=(50, 200, 20))
 
 def draw():
     screen.blit(scale_map_surface, (10, 115))
