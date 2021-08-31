@@ -77,7 +77,7 @@ class Element():
         self.hidden = False
 
 class Button(Element):
-    def __init__(self, ui, txt, pos, action, bg=WHITE, fg=BLACK, size=(100, 50), font_name="Segoe Print", font_size=16):
+    def __init__(self, ui, txt, pos, action, bg=WHITE, fg=BLACK, size=(100, 50), font_name=None, font_size=16):
         super().__init__(ui)
         ui.buttons.append(self) # adds button to UI
         self.kind = "button"
@@ -86,6 +86,8 @@ class Button(Element):
         self.fg = fg  # text color
         self.size = size
 
+        if font_name == None:
+            font_name = pygame.font.match_font('arial')  # python looks for closest match to arial on whatever computer
         self.font = pygame.font.SysFont(font_name, font_size)
         self.txt = txt
         self.txt_surf = self.font.render(self.txt, 1, self.fg)
