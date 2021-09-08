@@ -43,17 +43,43 @@ RIVER_ROCKS = [636, 637, 638, 639, 640]
 WAVE_TILES = [231, 232, 233,258, 260, 285, 286, 287]
 WAVE_CORNER_TILES = [237, 238, 480, 481]
 WAVE_CORNER_TILES2 = [265, 264, 454, 453]
-MAIN_TREE_TILES = [649, 656, 838, 845]
-ALL_TREE_TILES = []
-TREE_DIMENTIONS = 7
-TREE_CENTER = 3
-for tree in MAIN_TREE_TILES:
+MAIN_LARGE_TREE_TILES = [649, 656, 838, 845]
+ALL_LARGE_TREE_TILES = []
+LARGE_TREE_DIMENSIONS = 7
+LARGE_TREE_CENTER = 3
+for tree in MAIN_LARGE_TREE_TILES:
     tile = tree
-    for y in range(0, TREE_DIMENTIONS):
-        for x in range(0, TREE_DIMENTIONS):
-            ALL_TREE_TILES.append(tile)
+    for y in range(0, LARGE_TREE_DIMENSIONS):
+        for x in range(0, LARGE_TREE_DIMENSIONS):
+            ALL_LARGE_TREE_TILES.append(tile)
             tile += 1
-        tile += (TILESET_COLUMNS - TREE_DIMENTIONS)
+        tile += (TILESET_COLUMNS - LARGE_TREE_DIMENSIONS)
+
+MAIN_MED_TREE_TILES = [666, 671, 801, 806]
+ALL_MED_TREE_TILES = []
+MED_TREE_DIMENSIONS = 5
+MED_TREE_CENTER = 2
+for tree in MAIN_MED_TREE_TILES:
+    tile = tree
+    for y in range(0, MED_TREE_DIMENSIONS):
+        for x in range(0, MED_TREE_DIMENSIONS):
+            ALL_MED_TREE_TILES.append(tile)
+            tile += 1
+        tile += (TILESET_COLUMNS - MED_TREE_DIMENSIONS)
+
+MAIN_SMALL_TREE_TILES = [663, 825, 744, 906]
+ALL_SMALL_TREE_TILES = []
+SMALL_TREE_DIMENSIONS = 3
+SMALL_TREE_CENTER = 1
+for tree in MAIN_SMALL_TREE_TILES:
+    tile = tree
+    for y in range(0, SMALL_TREE_DIMENSIONS):
+        for x in range(0, SMALL_TREE_DIMENSIONS):
+            ALL_SMALL_TREE_TILES.append(tile)
+            tile += 1
+        tile += (TILESET_COLUMNS - SMALL_TREE_DIMENSIONS)
+EVERY_TREE_TILE = ALL_SMALL_TREE_TILES + ALL_MED_TREE_TILES + ALL_LARGE_TREE_TILES
+
 PALM_PROB = 10
 PINE_PROB = 7
 GREENTREE_PROB = 10
@@ -1243,59 +1269,76 @@ def make_tmx(filename = path.join(tmx_folder, "newmap.tmx")):
     plant_layer_vals = np.zeros((MAP_SIZE, MAP_SIZE), int)
     tree_layer_vals = np.zeros((MAP_SIZE, MAP_SIZE), int)
     stump = None
+    tree_dims = [SMALL_TREE_DIMENSIONS, MED_TREE_DIMENSIONS, LARGE_TREE_DIMENSIONS]
+    tree_centers = [SMALL_TREE_CENTER, MED_TREE_CENTER, LARGE_TREE_CENTER]
+    tree_tiles = [ALL_SMALL_TREE_TILES, ALL_MED_TREE_TILES, ALL_LARGE_TREE_TILES]
+    main_tree_tiles = [MAIN_SMALL_TREE_TILES, MAIN_MED_TREE_TILES, MAIN_LARGE_TREE_TILES]
     # Places vegetation
     print("Addinig plants...")
     for y in range(0, MAP_SIZE):
         for x in range(0, MAP_SIZE):
             if rivers[y][x] == 0:
-                if (ocean_regions[y][x] == 0) and (y < MAP_SIZE - TREE_DIMENTIONS) and (x < MAP_SIZE - TREE_DIMENTIONS): # Keeps it for going out of range.
+                tree_size = random.randrange(0, 3)
+                if (ocean_regions[y][x] == 0) and (y < MAP_SIZE - tree_dims[tree_size]) and (x < MAP_SIZE - tree_dims[tree_size]): # Keeps it for going out of range.
                     if random.randrange(0, 10) and random_plant_noise[y][x]: # Only does tree checks every 10th tile on average.
-                        tree_scope = [tree_layer_vals[y][x], tree_layer_vals[y][x+1], tree_layer_vals[y][x+2], tree_layer_vals[y][x+3], tree_layer_vals[y][x+4], tree_layer_vals[y][x+5], tree_layer_vals[y][x+6],
-                                      tree_layer_vals[y+1][x], tree_layer_vals[y+1][x+1], tree_layer_vals[y+1][x+2], tree_layer_vals[y+1][x+3], tree_layer_vals[y+1][x+4], tree_layer_vals[y+1][x+5], tree_layer_vals[y+1][x+6],
-                                      tree_layer_vals[y +2][x], tree_layer_vals[y +2][x+1], tree_layer_vals[y +2][x+2], tree_layer_vals[y +2][x+3], tree_layer_vals[y +2][x+4], tree_layer_vals[y +2][x+5], tree_layer_vals[y +2][x+6],
-                                      tree_layer_vals[y +3][x], tree_layer_vals[y +3][x+1], tree_layer_vals[y +3][x+2], tree_layer_vals[y +3][x+3], tree_layer_vals[y +3][x+4], tree_layer_vals[y +3][x+5], tree_layer_vals[y +3][x+6],
-                                      tree_layer_vals[y +4][x], tree_layer_vals[y +4][x+1], tree_layer_vals[y +4][x+2], tree_layer_vals[y +4][x+3], tree_layer_vals[y +4][x+4], tree_layer_vals[y +4][x+5], tree_layer_vals[y +4][x+6],
-                                      tree_layer_vals[y +5][x], tree_layer_vals[y +5][x+1], tree_layer_vals[y +5][x+2], tree_layer_vals[y +5][x+3], tree_layer_vals[y +5][x+4], tree_layer_vals[y +5][x+5], tree_layer_vals[y +5][x+6],
-                                      tree_layer_vals[y +6][x], tree_layer_vals[y +6][x+1], tree_layer_vals[y +6][x+2], tree_layer_vals[y +6][x+3], tree_layer_vals[y +6][x+4], tree_layer_vals[y +6][x+5], tree_layer_vals[y +6][x+6]]
+                        if tree_size == 2:
+                            tree_scope = [tree_layer_vals[y][x], tree_layer_vals[y][x+1], tree_layer_vals[y][x+2], tree_layer_vals[y][x+3], tree_layer_vals[y][x+4], tree_layer_vals[y][x+5], tree_layer_vals[y][x+6],
+                                          tree_layer_vals[y+1][x], tree_layer_vals[y+1][x+1], tree_layer_vals[y+1][x+2], tree_layer_vals[y+1][x+3], tree_layer_vals[y+1][x+4], tree_layer_vals[y+1][x+5], tree_layer_vals[y+1][x+6],
+                                          tree_layer_vals[y +2][x], tree_layer_vals[y +2][x+1], tree_layer_vals[y +2][x+2], tree_layer_vals[y +2][x+3], tree_layer_vals[y +2][x+4], tree_layer_vals[y +2][x+5], tree_layer_vals[y +2][x+6],
+                                          tree_layer_vals[y +3][x], tree_layer_vals[y +3][x+1], tree_layer_vals[y +3][x+2], tree_layer_vals[y +3][x+3], tree_layer_vals[y +3][x+4], tree_layer_vals[y +3][x+5], tree_layer_vals[y +3][x+6],
+                                          tree_layer_vals[y +4][x], tree_layer_vals[y +4][x+1], tree_layer_vals[y +4][x+2], tree_layer_vals[y +4][x+3], tree_layer_vals[y +4][x+4], tree_layer_vals[y +4][x+5], tree_layer_vals[y +4][x+6],
+                                          tree_layer_vals[y +5][x], tree_layer_vals[y +5][x+1], tree_layer_vals[y +5][x+2], tree_layer_vals[y +5][x+3], tree_layer_vals[y +5][x+4], tree_layer_vals[y +5][x+5], tree_layer_vals[y +5][x+6],
+                                          tree_layer_vals[y +6][x], tree_layer_vals[y +6][x+1], tree_layer_vals[y +6][x+2], tree_layer_vals[y +6][x+3], tree_layer_vals[y +6][x+4], tree_layer_vals[y +6][x+5], tree_layer_vals[y +6][x+6]]
+                        elif tree_size == 1:
+                            tree_scope = [tree_layer_vals[y][x], tree_layer_vals[y][x+1], tree_layer_vals[y][x+2], tree_layer_vals[y][x+3], tree_layer_vals[y][x+4],
+                                          tree_layer_vals[y+1][x], tree_layer_vals[y+1][x+1], tree_layer_vals[y+1][x+2], tree_layer_vals[y+1][x+3], tree_layer_vals[y+1][x+4],
+                                          tree_layer_vals[y +2][x], tree_layer_vals[y +2][x+1], tree_layer_vals[y +2][x+2], tree_layer_vals[y +2][x+3], tree_layer_vals[y +2][x+4],
+                                          tree_layer_vals[y +3][x], tree_layer_vals[y +3][x+1], tree_layer_vals[y +3][x+2], tree_layer_vals[y +3][x+3], tree_layer_vals[y +3][x+4],
+                                          tree_layer_vals[y +4][x], tree_layer_vals[y +4][x+1], tree_layer_vals[y +4][x+2], tree_layer_vals[y +4][x+3], tree_layer_vals[y +4][x+4]]
+                        else:
+                            tree_scope = [tree_layer_vals[y][x], tree_layer_vals[y][x+1], tree_layer_vals[y][x+2],
+                                          tree_layer_vals[y+1][x], tree_layer_vals[y+1][x+1], tree_layer_vals[y+1][x+2],
+                                          tree_layer_vals[y +2][x], tree_layer_vals[y +2][x+1], tree_layer_vals[y +2][x+2]]
+
                         # Trees
                         place_tree = True
                         if beach_regions[y][x] and (6 < base_layer_vals[y][x] < 11):
-                            tree = MAIN_TREE_TILES[2]
+                            tree = main_tree_tiles[tree_size][2]
                             stump = STUMP_TILES[2]
                             prob = PALM_PROB
                         elif (not beach_regions[y][x]) and base_layer_vals[y][x] in [8, 9]:
-                            tree = MAIN_TREE_TILES[1]
+                            tree = main_tree_tiles[tree_size][1]
                             stump = STUMP_TILES[1]
                             prob = GREENTREE_PROB
                         elif (not beach_regions[y][x]) and base_layer_vals[y][x] in [10, 11]:
                             if random.randrange(0, 3) == 1:
-                                tree = MAIN_TREE_TILES[3]
+                                tree = main_tree_tiles[tree_size][3]
                                 stump = STUMP_TILES[3]
                                 prob = PINE_PROB
                             elif random.randrange(0, 10) == 1:
-                                tree = MAIN_TREE_TILES[0]
+                                tree = main_tree_tiles[tree_size][0]
                                 stump = STUMP_TILES[0]
                                 prob = DEADTREE_PROB
                             else:
-                                tree = MAIN_TREE_TILES[1]
+                                tree = main_tree_tiles[tree_size][1]
                                 stump = STUMP_TILES[1]
                                 prob = GREENTREE_PROB
                         elif (not beach_regions[y][x]) and (11 < base_layer_vals[y][x] < 14):
                             if random.randrange(0, 10) == 1:
-                                tree = MAIN_TREE_TILES[0]
+                                tree = main_tree_tiles[tree_size][0]
                                 stump = STUMP_TILES[0]
                                 prob = DEADTREE_PROB
                             else:
-                                tree = MAIN_TREE_TILES[3]
+                                tree = main_tree_tiles[tree_size][3]
                                 stump = STUMP_TILES[3]
                                 prob = PINE_PROB * 2
                         elif (not beach_regions[y][x]) and (14 < base_layer_vals[y][x] < 17):
                             if random.randrange(0, 10) == 1:
-                                tree = MAIN_TREE_TILES[0]
+                                tree = main_tree_tiles[tree_size][0]
                                 stump = STUMP_TILES[0]
                                 prob = DEADTREE_PROB * 4
                             else:
-                                tree = MAIN_TREE_TILES[3]
+                                tree = main_tree_tiles[tree_size][3]
                                 stump = STUMP_TILES[3]
                                 prob = PINE_PROB * 4
                         else:
@@ -1304,18 +1347,18 @@ def make_tmx(filename = path.join(tmx_folder, "newmap.tmx")):
                             prob = int(prob / plant_slider.val)
                         if place_tree and (random.randrange(0, prob * 10) == 1):
                             for tile in tree_scope:
-                                if tile in ALL_TREE_TILES: # checks to see if there are already tree tiles before placing a tree.
+                                if tile in EVERY_TREE_TILE: # checks to see if there are already tree tiles before placing a tree.
                                     place_tree = False
                                     continue
                             if place_tree:
                                 tile = tree
-                                for i in range(0, TREE_DIMENTIONS):
-                                    for j in range(0, TREE_DIMENTIONS):
+                                for i in range(0, tree_dims[tree_size]):
+                                    for j in range(0, tree_dims[tree_size]):
                                         tree_layer_vals[y + i][x + j] = tile
                                         tile += 1
-                                        if (i == TREE_CENTER) and (j == TREE_CENTER):
+                                        if (i == tree_centers[tree_size]) and (j == tree_centers[tree_size]):
                                             plant_layer_vals[y + i][x + j] = stump
-                                    tile += (TILESET_COLUMNS - TREE_DIMENTIONS)
+                                    tile += (TILESET_COLUMNS - tree_dims[tree_size])
 
 
                 # Plants
