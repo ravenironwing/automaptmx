@@ -1,0 +1,4 @@
+pygame~=2.3.0
+numpy~=1.24.3
+opencv-python~=4.7.0.72
+noise~=1.2.2

@@ -142,6 +142,7 @@ class Slider(Element):
         self.hit = False  # the hit attribute indicates slider movement due to mouse interaction
 
         self.txt_surf = self.font.render(txt, 1, BLACK)
+        self.txt_surf.set_alpha(240)
         self.txt_rect = self.txt_surf.get_rect(center=(50, 15))
 
         # Static graphics - slider background #
